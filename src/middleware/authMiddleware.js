@@ -15,3 +15,11 @@ export const protect = (req, res, next) => {
     res.status(401).json({ message: "Invalid token" });
   }
 };
+
+export const adminOnly = (req, res, next) => {
+  if (req.user && req.user.role === "instructor") {
+    next();
+  } else {
+    res.status(403).json({ message: "Forbidden: Admins Only" });
+  }
+};

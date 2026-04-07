@@ -37,7 +37,7 @@ const sendOTPEmail = async (email, otp) => {
 // ─── REGISTER ────────────────────────────────────────────────
 export const registerUser = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, batch } = req.body;
 
     // --- Input validation ---
     if (!name || !email || !password) {
@@ -73,6 +73,13 @@ export const registerUser = async (req, res) => {
     const validRoles = ["student", "instructor"];
     const userRole = role && validRoles.includes(role) ? role : "student";
 
+    // Validate batch for students
+    if (userRole === "student" && (!batch || batch.trim() === "")) {
+      return res.status(400).json({
+        message: "Please select your batch.",
+      });
+    }
+
     // Check if user already exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
@@ -91,11 +98,12 @@ export const registerUser = async (req, res) => {
       email: email.toLowerCase(),
       password: hashedPassword,
       role: userRole,
+      batch: userRole === "student" ? batch.trim() : undefined,
     });
 
     // Generate JWT token for auto-login
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: user._id, role: user.role, batch: user.batch },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -108,6 +116,7 @@ export const registerUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        batch: user.batch,
       },
     });
   } catch (error) {
@@ -154,7 +163,7 @@ export const loginUser = async (req, res) => {
 
     // Generate token
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: user._id, role: user.role, batch: user.batch },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -167,6 +176,7 @@ export const loginUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        batch: user.batch,
       },
     });
   } catch (error) {
