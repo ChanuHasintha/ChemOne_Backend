@@ -1,6 +1,6 @@
 import express from 'express';
-import { protect } from '../middleware/authMiddleware.js';
-import { createTest, getTests, getTestById, submitTest } from '../controllers/spotTestController.js';
+import { adminOnly, protect } from '../middleware/authMiddleware.js';
+import { createTest, getTests, getTestById, submitTest, updateTest, deleteTest, togglePublishTest } from '../controllers/spotTestController.js';
 
 const router = express.Router();
 
@@ -11,7 +11,16 @@ router.get('/', protect, getTests);
 router.get('/:id', protect, getTestById);
 
 // Create test (Admin only)
-router.post('/create', protect, createTest);
+router.post('/create', protect, adminOnly, createTest);
+
+// Update test (Admin only)
+router.put('/:id', protect, adminOnly, updateTest);
+
+// Delete test (Admin only)
+router.delete('/:id', protect, adminOnly, deleteTest);
+
+// Toggle Publish test (Admin only)
+router.patch('/:id/publish', protect, adminOnly, togglePublishTest);
 
 // Submit test (Student only)
 router.post('/submit', protect, submitTest);

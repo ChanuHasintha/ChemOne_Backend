@@ -30,6 +30,10 @@ const userSchema = new mongoose.Schema(
       },
       default: "student",
     },
+    batch: {
+      type: String,
+      trim: true,
+    },
     resetPasswordOTP: String,
     resetPasswordOTPExpires: Date,
   },

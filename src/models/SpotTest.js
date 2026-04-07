@@ -12,8 +12,9 @@ const spotTestSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String },
   duration: { type: Number, required: true }, // in minutes
-  batch: { type: String, required: true },
+  batch: [{ type: String, required: true }],
   questions: [questionSchema],
+  isPublished: { type: Boolean, default: false },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
