@@ -1,6 +1,6 @@
 import express from 'express';
 import { adminOnly, protect } from '../middleware/authMiddleware.js';
-import { createTest, getTests, getTestById, submitTest, updateTest, deleteTest, togglePublishTest } from '../controllers/spotTestController.js';
+import { createTest, getTests, getTestById, submitTest, updateTest, deleteTest, togglePublishTest, getTestSubmissions } from '../controllers/spotTestController.js';
 
 const router = express.Router();
 
@@ -9,6 +9,9 @@ router.get('/', protect, getTests);
 
 // Get single test
 router.get('/:id', protect, getTestById);
+
+// Get submissions for a test (Admin only)
+router.get('/:id/submissions', getTestSubmissions);
 
 // Create test (Admin only)
 router.post('/create', protect, adminOnly, createTest);

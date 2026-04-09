@@ -93,13 +93,18 @@ export const registerUser = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     // Create user
-    const user = await User.create({
+    const userPayload = {
       name: trimmedName,
       email: email.toLowerCase(),
       password: hashedPassword,
       role: userRole,
-      batch: userRole === "student" ? batch.trim() : undefined,
-    });
+    };
+    
+    if (userRole === "student" && batch) {
+      userPayload.batch = batch.trim();
+    }
+
+    const user = await User.create(userPayload);
 
     // Generate JWT token for auto-login
     const token = jwt.sign(
@@ -117,6 +122,8 @@ export const registerUser = async (req, res) => {
         email: user.email,
         role: user.role,
         batch: user.batch,
+        indexNumber: user.indexNumber,
+        createdAt: user.createdAt,
       },
     });
   } catch (error) {
@@ -177,6 +184,8 @@ export const loginUser = async (req, res) => {
         email: user.email,
         role: user.role,
         batch: user.batch,
+        indexNumber: user.indexNumber,
+        createdAt: user.createdAt,
       },
     });
   } catch (error) {
@@ -262,5 +271,55 @@ export const resetPassword = async (req, res) => {
     res.status(500).json({
       message: "Server error. Please try again later.",
     });
+  }
+};
+
+// ─── GET CURRENT USER PROFILE ───────────────────────────────
+export const getUserProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("-password");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error("Profile error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ─── UPDATE USER PROFILE ───────────────────────────────
+export const updateUserProfile = async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (name) user.name = name.trim();
+    if (email) user.email = email.toLowerCase().trim();
+
+    const updatedUser = await user.save();
+
+    res.json({
+      message: "Profile updated successfully",
+      user: {
+        id: updatedUser._id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        batch: updatedUser.batch,
+        indexNumber: updatedUser.indexNumber,
+        createdAt: updatedUser.createdAt,
+      },
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ message: "Email already in use" });
+    }
+    console.error("Update profile error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
