@@ -13,7 +13,12 @@ const spotTestSchema = new mongoose.Schema({
   description: { type: String },
   duration: { type: Number, required: true }, // in minutes
   batch: [{ type: String, required: true }],
-  questions: [questionSchema],
+  testType: { type: String, enum: ['mcq', 'image'], default: 'mcq' },
+  testImage: { type: String }, // Base64 or URL
+  questions: {
+    type: [questionSchema],
+    default: []
+  },
   isPublished: { type: Boolean, default: false },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });

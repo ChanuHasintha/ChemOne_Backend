@@ -4,7 +4,7 @@ import Submission from '../models/Submission.js';
 // Create a new Spot Test (Admin only)
 export const createTest = async (req, res) => {
   try {
-    const { title, description, duration, batch, questions } = req.body;
+    const { title, description, duration, batch, questions, testType, testImage } = req.body;
     
     // CreatedBy comes from auth middleware (protect)
     const newTest = await SpotTest.create({
@@ -13,6 +13,8 @@ export const createTest = async (req, res) => {
       duration,
       batch,
       questions,
+      testType,
+      testImage,
       createdBy: req.user.id 
     });
 
@@ -99,7 +101,7 @@ export const getTestById = async (req, res) => {
 // Submit a test (Student only)
 export const submitTest = async (req, res) => {
   try {
-    const { testId, answers } = req.body;
+    const { testId, answers, timeTaken } = req.body;
     const test = await SpotTest.findById(testId);
     
     if (!test) {
@@ -145,7 +147,8 @@ export const submitTest = async (req, res) => {
       test: testId,
       answers: detailedAnswers,
       score,
-      totalMarks
+      totalMarks,
+      timeTaken
     });
 
     res.status(201).json({
@@ -169,11 +172,11 @@ export const submitTest = async (req, res) => {
 export const updateTest = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, duration, batch, questions } = req.body;
+    const { title, description, duration, batch, questions, testType, testImage } = req.body;
 
     const updatedTest = await SpotTest.findByIdAndUpdate(
       id,
-      { title, description, duration, batch, questions },
+      { title, description, duration, batch, questions, testType, testImage },
       { new: true, runValidators: true }
     );
 
@@ -242,6 +245,37 @@ export const togglePublishTest = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error toggling test status",
+      error: error.message
+    });
+  }
+};
+
+// Get submissions for a specific test (Admin only)
+export const getTestSubmissions = async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log("FETCHING SUBMISSIONS FOR TEST:", id);
+    
+    // Find submissions for this test and populate student data
+    const submissions = await Submission.find({ test: id })
+      .populate('student', 'name indexNumber')
+      .sort({ score: -1, timeTaken: 1 }) // Highest score first, then fastest time
+      .lean();
+
+    // Assign rank/place based on score and time
+    const rankedSubmissions = submissions.map((sub, index) => ({
+      ...sub,
+      rank: index + 1
+    }));
+
+    res.status(200).json({
+      success: true,
+      submissions: rankedSubmissions
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching submissions",
       error: error.message
     });
   }
