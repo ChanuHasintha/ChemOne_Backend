@@ -323,3 +323,16 @@ export const updateUserProfile = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+// ─── GET ALL STUDENTS (ADMIN ONLY) ───────────────────────────────
+export const getAllStudents = async (req, res) => {
+  try {
+    const students = await User.find({ role: "student" })
+      .select("name indexNumber batch email createdAt")
+      .sort({ createdAt: -1 });
+    res.json(students);
+  } catch (error) {
+    console.error("Get all students error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};

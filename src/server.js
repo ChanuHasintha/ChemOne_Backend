@@ -5,6 +5,7 @@ import connectDB from "./config/db.js";
 import authRoutes from "./routes/authRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 import spotRoutes from "./routes/spotRoutes.js";
+import worksheetRoutes from "./routes/worksheetRoutes.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -27,6 +28,7 @@ app.use("/uploads", express.static(path.join(__dirname, "../public/uploads")));
 app.use("/api/auth", authRoutes);
 app.use("/api/tests", spotRoutes);
 app.use("/api/upload", uploadRoutes);
+app.use("/api/worksheets", worksheetRoutes);
 
 app.get("/", (req, res) => {
   res.send("LMS API Running...");
