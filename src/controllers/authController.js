@@ -1,4 +1,5 @@
 import User from "../models/User.js";
+import OTP from "../models/OTP.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
@@ -34,15 +35,75 @@ const sendOTPEmail = async (email, otp) => {
   }
 };
 
+const sendRegistrationOTPEmail = async (email, otp) => {
+  try {
+    const transporter = await getTransporter();
+
+    const info = await transporter.sendMail({
+      from: '"ChemOne Welcome" <support@chemone.app>',
+      to: email,
+      subject: "Welcome to ChemOne! Your Verification Code",
+      text: `Your OTP for completing registration is: ${otp}. It is valid for 10 minutes.`,
+      html: `<p>Thank you for starting your registration with ChemOne!</p>
+             <p>Here is your One-Time Password to verify your email:</p>
+             <h2 style="color: #c8f230; letter-spacing: 2px;">${otp}</h2>
+             <p>It is valid for 10 minutes.</p>`,
+    });
+
+    if (!process.env.SMTP_HOST) {
+      console.log("Mock Registration Email sent! Preview URL: %s", nodemailer.getTestMessageUrl(info));
+    }
+  } catch (error) {
+    console.error("REGISTRATION EMAIL SENDING FAILED! Reason:", error.message);
+    console.log("======================================");
+    console.log("🔥 DEV MODE: Your Signup OTP is:", otp);
+    console.log("======================================");
+  }
+};
+
+// ─── SEND SIGNUP OTP ─────────────────────────────────────────
+export const sendSignupOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required." });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(409).json({ message: "An account with this email already exists." });
+    }
+
+    // Delete any existing OTP for this email
+    await OTP.deleteMany({ email: email.toLowerCase() });
+
+    const otp = generateOTP();
+    
+    await OTP.create({
+      email: email.toLowerCase(),
+      otp: otp,
+    });
+
+    await sendRegistrationOTPEmail(email, otp);
+
+    res.status(200).json({ message: "OTP sent successfully to your email." });
+  } catch (error) {
+    console.error("Send signup OTP error:", error);
+    res.status(500).json({ message: "Server error. Please try again later." });
+  }
+};
+
 // ─── REGISTER ────────────────────────────────────────────────
 export const registerUser = async (req, res) => {
   try {
-    const { name, email, password, role, batch } = req.body;
+    const { name, email, password, role, batch, otp } = req.body;
 
     // --- Input validation ---
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !otp) {
       return res.status(400).json({
-        message: "All fields are required (name, email, password).",
+        message: "All fields including OTP are required.",
       });
     }
 
@@ -88,6 +149,14 @@ export const registerUser = async (req, res) => {
       });
     }
 
+    // Verify OTP
+    const validOtp = await OTP.findOne({ email: email.toLowerCase(), otp: otp });
+    if (!validOtp) {
+      return res.status(400).json({
+        message: "Invalid or expired OTP. Please check your email.",
+      });
+    }
+
     // Hash password
     const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(password, salt);
@@ -105,6 +174,9 @@ export const registerUser = async (req, res) => {
     }
 
     const user = await User.create(userPayload);
+
+    // Delete the verified OTP
+    await OTP.deleteOne({ _id: validOtp._id });
 
     // Generate JWT token for auto-login
     const token = jwt.sign(
