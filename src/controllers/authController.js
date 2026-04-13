@@ -98,12 +98,12 @@ export const sendSignupOTP = async (req, res) => {
 // ─── REGISTER ────────────────────────────────────────────────
 export const registerUser = async (req, res) => {
   try {
-    const { name, email, password, role, batch, otp } = req.body;
+    const { name, email, password, role, batch } = req.body;
 
     // --- Input validation ---
-    if (!name || !email || !password || !otp) {
+    if (!name || !email || !password) {
       return res.status(400).json({
-        message: "All fields including OTP are required.",
+        message: "All fields are required.",
       });
     }
 
@@ -149,13 +149,7 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    // Verify OTP
-    const validOtp = await OTP.findOne({ email: email.toLowerCase(), otp: otp });
-    if (!validOtp) {
-      return res.status(400).json({
-        message: "Invalid or expired OTP. Please check your email.",
-      });
-    }
+
 
     // Hash password
     const salt = await bcrypt.genSalt(12);
@@ -175,8 +169,7 @@ export const registerUser = async (req, res) => {
 
     const user = await User.create(userPayload);
 
-    // Delete the verified OTP
-    await OTP.deleteOne({ _id: validOtp._id });
+
 
     // Generate JWT token for auto-login
     const token = jwt.sign(
