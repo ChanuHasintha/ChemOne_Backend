@@ -1,20 +1,16 @@
-import multer from "multer";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
-import cloudinary from "../config/cloudinary.js";
+import multer from 'multer';
 
-const storage = new CloudinaryStorage({
-    cloudinary: cloudinary,
-    params: {
-        folder: 'worksheets',
-        allowed_formats: ['pdf'],
-        resource_type: 'raw',
-        access_mode: "public",
-        public_id: (req, file) => {
-            // Strip file extension to avoid double extensions (e.g. file.pdf.pdf)
-            const nameWithoutExt = file.originalname.replace(/\.[^/.]+$/, "");
-            return Date.now() + "-" + nameWithoutExt.replace(/\s/g, "");
-        },
+// Use memory storage — files will be streamed to GCS in the controller
+const storage = multer.memoryStorage();
+
+export const upload = multer({
+    storage,
+    limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'application/pdf') {
+            cb(null, true);
+        } else {
+            cb(new Error('Only PDF files are allowed'), false);
+        }
     },
 });
-
-export const upload = multer({ storage });

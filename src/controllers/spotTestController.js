@@ -1,5 +1,6 @@
 import SpotTest from '../models/SpotTest.js';
 import Submission from '../models/Submission.js';
+import bucket from '../config/gcs.js';
 
 // Create a new Spot Test (Admin only)
 export const createTest = async (req, res) => {
@@ -50,15 +51,40 @@ export const getTests = async (req, res) => {
     
     const submissions = await Submission.find({ student: req.user.id });
     
-    const testsWithStatus = tests.map(test => {
+    const testsWithStatus = await Promise.all(tests.map(async test => {
       const submission = submissions.find(s => s.test.toString() === test._id.toString());
+      
+      let signedTestImage = test.testImage;
+      // If it's a GCS URL, generate a signed URL
+      if (signedTestImage && signedTestImage.includes('storage.googleapis.com')) {
+        try {
+          const urlParts = signedTestImage.split('/');
+          // Extract the object path (e.g. "spot_tests/filename.jpg")
+          // Assuming format: https://storage.googleapis.com/BUCKET_NAME/spot_tests/filename
+          const objectPath = urlParts.slice(4).join('/');
+          
+          if (objectPath) {
+            const options = {
+              version: 'v4',
+              action: 'read',
+              expires: Date.now() + 12 * 60 * 60 * 1000, // 12 hours
+            };
+            const [url] = await bucket.file(objectPath).getSignedUrl(options);
+            signedTestImage = url;
+          }
+        } catch (err) {
+          console.error('Error generating signed URL for Spot Test', err);
+        }
+      }
+
       return {
         ...test,
+        testImage: signedTestImage,
         isSubmitted: !!submission,
         score: submission ? submission.score : null,
         totalMarks: submission ? submission.totalMarks : null
       };
-    });
+    }));
 
     res.status(200).json({
       success: true,
@@ -85,9 +111,32 @@ export const getTestById = async (req, res) => {
     if (req.user.role === 'student' && !test.isPublished) {
       return res.status(403).json({ success: false, message: "This test is not yet published" });
     }
+    let signedTestImage = test.testImage;
+    if (signedTestImage && signedTestImage.includes('storage.googleapis.com')) {
+      try {
+        const urlParts = signedTestImage.split('/');
+        const objectPath = urlParts.slice(4).join('/');
+        
+        if (objectPath) {
+          const options = {
+            version: 'v4',
+            action: 'read',
+            expires: Date.now() + 12 * 60 * 60 * 1000, // 12 hours
+          };
+          const [url] = await bucket.file(objectPath).getSignedUrl(options);
+          signedTestImage = url;
+        }
+      } catch (err) {
+        console.error('Error generating signed URL for Spot Test', err);
+      }
+    }
+
     res.status(200).json({
       success: true,
-      test
+      test: {
+        ...test.toObject(),
+        testImage: signedTestImage
+      }
     });
   } catch (error) {
     res.status(500).json({
