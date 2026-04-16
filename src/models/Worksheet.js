@@ -7,6 +7,8 @@ const worksheetSchema = new mongoose.Schema(
         publicId: String,
         date: String,
         notes: String,
+        officialAnswerUrl: String,
+        officialAnswerPublicId: String,
     },
     { timestamps: true }
 );

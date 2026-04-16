@@ -3,7 +3,13 @@ import {
     uploadWorksheet,
     getWorksheets,
     deleteWorksheet,
+    submitWorksheetAnswer,
+    getWorksheetSubmissions,
+    deleteWorksheetAnswer,
+    uploadOfficialAnswer,
+    confirmWorksheetSubmission,
 } from "../controllers/worksheetController.js";
+import { protect } from "../middleware/authMiddleware.js";
 
 import { upload } from "../middleware/upload.js";
 
@@ -13,9 +19,24 @@ const router = express.Router();
 router.post("/", upload.single("file"), uploadWorksheet);
 
 // Get all
-router.get("/", getWorksheets);
+router.get("/", protect, getWorksheets);
 
-// Delete
-router.delete("/:id", deleteWorksheet);
+// Delete (Admin)
+router.delete("/:id", protect, deleteWorksheet);
+
+// Submit Answer (Student)
+router.post("/:id/submit", protect, upload.single("file"), submitWorksheetAnswer);
+
+// Delete Answer (Student)
+router.delete("/:id/submit", protect, deleteWorksheetAnswer);
+
+// Confirm Answer (Student)
+router.post("/:id/confirm", protect, confirmWorksheetSubmission);
+
+// Get Submissions (Admin)
+router.get("/:id/submissions", protect, getWorksheetSubmissions);
+
+// Upload Official Answer (Admin)
+router.post("/:id/official-answer", protect, upload.single("file"), uploadOfficialAnswer);
 
 export default router;
