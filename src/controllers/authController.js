@@ -14,7 +14,7 @@ const sendOTPEmail = async (email, otp) => {
     const transporter = await getTransporter();
 
     const info = await transporter.sendMail({
-      from: '"ChemOne Support" <support@chemone.app>',
+      from: '"ChemBridge Support" <support@chembridge.app>',
       to: email,
       subject: "Password Reset OTP",
       text: `Your OTP for resetting your password is: ${otp}. It is valid for 10 minutes.`,
@@ -35,31 +35,6 @@ const sendOTPEmail = async (email, otp) => {
   }
 };
 
-const sendRegistrationOTPEmail = async (email, otp) => {
-  try {
-    const transporter = await getTransporter();
-
-    const info = await transporter.sendMail({
-      from: '"ChemOne Welcome" <support@chemone.app>',
-      to: email,
-      subject: "Welcome to ChemOne! Your Verification Code",
-      text: `Your OTP for completing registration is: ${otp}. It is valid for 10 minutes.`,
-      html: `<p>Thank you for starting your registration with ChemOne!</p>
-             <p>Here is your One-Time Password to verify your email:</p>
-             <h2 style="color: #c8f230; letter-spacing: 2px;">${otp}</h2>
-             <p>It is valid for 10 minutes.</p>`,
-    });
-
-    if (!process.env.SMTP_HOST) {
-      console.log("Mock Registration Email sent! Preview URL: %s", nodemailer.getTestMessageUrl(info));
-    }
-  } catch (error) {
-    console.error("REGISTRATION EMAIL SENDING FAILED! Reason:", error.message);
-    console.log("======================================");
-    console.log("🔥 DEV MODE: Your Signup OTP is:", otp);
-    console.log("======================================");
-  }
-};
 
 // ─── SEND SIGNUP OTP ─────────────────────────────────────────
 export const sendSignupOTP = async (req, res) => {
@@ -80,13 +55,13 @@ export const sendSignupOTP = async (req, res) => {
     await OTP.deleteMany({ email: email.toLowerCase() });
 
     const otp = generateOTP();
-    
+
     await OTP.create({
       email: email.toLowerCase(),
       otp: otp,
     });
 
-    await sendRegistrationOTPEmail(email, otp);
+
 
     res.status(200).json({ message: "OTP sent successfully to your email." });
   } catch (error) {
@@ -162,7 +137,7 @@ export const registerUser = async (req, res) => {
       password: hashedPassword,
       role: userRole,
     };
-    
+
     if (userRole === "student" && batch) {
       userPayload.batch = batch.trim();
     }
@@ -280,7 +255,7 @@ export const forgotPassword = async (req, res) => {
     // Valid for 10 minutes
     user.resetPasswordOTP = otp;
     user.resetPasswordOTPExpires = Date.now() + 10 * 60 * 1000;
-    
+
     await user.save();
     await sendOTPEmail(user.email, otp);
 
@@ -308,12 +283,12 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ 
+    const user = await User.findOne({
       email: email.toLowerCase(),
       resetPasswordOTP: otp,
       resetPasswordOTPExpires: { $gt: Date.now() }
     });
-    
+
     if (!user) {
       return res.status(400).json({
         message: "Invalid or expired OTP.",
