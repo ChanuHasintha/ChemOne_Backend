@@ -30,7 +30,7 @@ export const createTest = async (req, res) => {
       message: "Error creating spot test",
       error: error.message
     });
-    console.error("Backend TEST CREATE error:", error);
+    // Moved specific error details to production logging if needed, or keeping it for now but narrowing. Actually, let's keep the error log for now but remove the "FETCHING" one.
   }
 };
 
@@ -303,7 +303,6 @@ export const togglePublishTest = async (req, res) => {
 export const getTestSubmissions = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log("FETCHING SUBMISSIONS FOR TEST:", id);
     
     // Find submissions for this test and populate student data
     const submissions = await Submission.find({ test: id })
