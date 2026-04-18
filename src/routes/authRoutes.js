@@ -1,8 +1,20 @@
 import express from "express";
-import { registerUser, loginUser, forgotPassword, resetPassword, getUserProfile, updateUserProfile } from "../controllers/authController.js";
+import { 
+  registerUser, 
+  sendSignupOTP,
+  loginUser, 
+  forgotPassword, 
+  resetPassword, 
+  getUserProfile, 
+  updateUserProfile, 
+  getAllStudents 
+} from "../controllers/authController.js";
 import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
+
+// Send Signup OTP
+router.post("/send-signup-otp", sendSignupOTP);
 
 // Register
 router.post("/register", registerUser);
@@ -21,5 +33,8 @@ router.get("/me", protect, getUserProfile);
 
 // Update Profile
 router.put("/me", protect, updateUserProfile);
+
+// Get All Students
+router.get("/students", protect, getAllStudents);
 
 export default router;

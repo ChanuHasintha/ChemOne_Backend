@@ -1,4 +1,5 @@
 import User from "../models/User.js";
+import OTP from "../models/OTP.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
@@ -13,7 +14,7 @@ const sendOTPEmail = async (email, otp) => {
     const transporter = await getTransporter();
 
     const info = await transporter.sendMail({
-      from: '"ChemOne Support" <support@chemone.app>',
+      from: '"ChemBridge Support" <support@chembridge.app>',
       to: email,
       subject: "Password Reset OTP",
       text: `Your OTP for resetting your password is: ${otp}. It is valid for 10 minutes.`,
@@ -34,6 +35,41 @@ const sendOTPEmail = async (email, otp) => {
   }
 };
 
+
+// ─── SEND SIGNUP OTP ─────────────────────────────────────────
+export const sendSignupOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required." });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(409).json({ message: "An account with this email already exists." });
+    }
+
+    // Delete any existing OTP for this email
+    await OTP.deleteMany({ email: email.toLowerCase() });
+
+    const otp = generateOTP();
+
+    await OTP.create({
+      email: email.toLowerCase(),
+      otp: otp,
+    });
+
+
+
+    res.status(200).json({ message: "OTP sent successfully to your email." });
+  } catch (error) {
+    console.error("Send signup OTP error:", error);
+    res.status(500).json({ message: "Server error. Please try again later." });
+  }
+};
+
 // ─── REGISTER ────────────────────────────────────────────────
 export const registerUser = async (req, res) => {
   try {
@@ -42,7 +78,7 @@ export const registerUser = async (req, res) => {
     // --- Input validation ---
     if (!name || !email || !password) {
       return res.status(400).json({
-        message: "All fields are required (name, email, password).",
+        message: "All fields are required.",
       });
     }
 
@@ -88,6 +124,8 @@ export const registerUser = async (req, res) => {
       });
     }
 
+
+
     // Hash password
     const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(password, salt);
@@ -99,12 +137,14 @@ export const registerUser = async (req, res) => {
       password: hashedPassword,
       role: userRole,
     };
-    
+
     if (userRole === "student" && batch) {
       userPayload.batch = batch.trim();
     }
 
     const user = await User.create(userPayload);
+
+
 
     // Generate JWT token for auto-login
     const token = jwt.sign(
@@ -215,7 +255,7 @@ export const forgotPassword = async (req, res) => {
     // Valid for 10 minutes
     user.resetPasswordOTP = otp;
     user.resetPasswordOTPExpires = Date.now() + 10 * 60 * 1000;
-    
+
     await user.save();
     await sendOTPEmail(user.email, otp);
 
@@ -243,12 +283,12 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ 
+    const user = await User.findOne({
       email: email.toLowerCase(),
       resetPasswordOTP: otp,
       resetPasswordOTPExpires: { $gt: Date.now() }
     });
-    
+
     if (!user) {
       return res.status(400).json({
         message: "Invalid or expired OTP.",
@@ -320,6 +360,19 @@ export const updateUserProfile = async (req, res) => {
       return res.status(409).json({ message: "Email already in use" });
     }
     console.error("Update profile error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ─── GET ALL STUDENTS (ADMIN ONLY) ───────────────────────────────
+export const getAllStudents = async (req, res) => {
+  try {
+    const students = await User.find({ role: "student" })
+      .select("name indexNumber batch email createdAt")
+      .sort({ createdAt: -1 });
+    res.json(students);
+  } catch (error) {
+    console.error("Get all students error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };

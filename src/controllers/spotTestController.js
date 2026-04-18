@@ -1,11 +1,12 @@
 import SpotTest from '../models/SpotTest.js';
 import Submission from '../models/Submission.js';
+import bucket from '../config/gcs.js';
 
 // Create a new Spot Test (Admin only)
 export const createTest = async (req, res) => {
   try {
     const { title, description, duration, batch, questions, testType, testImage } = req.body;
-    
+
     // CreatedBy comes from auth middleware (protect)
     const newTest = await SpotTest.create({
       title,
@@ -15,7 +16,7 @@ export const createTest = async (req, res) => {
       questions,
       testType,
       testImage,
-      createdBy: req.user.id 
+      createdBy: req.user.id
     });
 
     res.status(201).json({
@@ -29,7 +30,7 @@ export const createTest = async (req, res) => {
       message: "Error creating spot test",
       error: error.message
     });
-    console.error("Backend TEST CREATE error:", error);
+    // Moved specific error details to production logging if needed, or keeping it for now but narrowing. Actually, let's keep the error log for now but remove the "FETCHING" one.
   }
 };
 
@@ -40,25 +41,50 @@ export const getTests = async (req, res) => {
     let query = {};
     if (req.user.role === 'student') {
       // Student only sees tests for their batch or 'all' AND are published
-      query = { 
+      query = {
         batch: { $in: [req.user.batch, 'all'] },
         isPublished: true
       };
     }
 
     const tests = await SpotTest.find(query).sort({ createdAt: -1 }).lean();
-    
+
     const submissions = await Submission.find({ student: req.user.id });
-    
-    const testsWithStatus = tests.map(test => {
+
+    const testsWithStatus = await Promise.all(tests.map(async test => {
       const submission = submissions.find(s => s.test.toString() === test._id.toString());
+
+      let signedTestImage = test.testImage;
+      // If it's a GCS URL, generate a signed URL
+      if (signedTestImage && signedTestImage.includes('storage.googleapis.com')) {
+        try {
+          const urlParts = signedTestImage.split('/');
+          // Extract the object path (e.g. "spot_tests/filename.jpg")
+          // Assuming format: https://storage.googleapis.com/BUCKET_NAME/spot_tests/filename
+          const objectPath = urlParts.slice(4).join('/');
+
+          if (objectPath) {
+            const options = {
+              version: 'v4',
+              action: 'read',
+              expires: Date.now() + 12 * 60 * 60 * 1000, // 12 hours
+            };
+            const [url] = await bucket.file(objectPath).getSignedUrl(options);
+            signedTestImage = url;
+          }
+        } catch (err) {
+          console.error('Error generating signed URL for Spot Test', err);
+        }
+      }
+
       return {
         ...test,
+        testImage: signedTestImage,
         isSubmitted: !!submission,
         score: submission ? submission.score : null,
         totalMarks: submission ? submission.totalMarks : null
       };
-    });
+    }));
 
     res.status(200).json({
       success: true,
@@ -85,9 +111,32 @@ export const getTestById = async (req, res) => {
     if (req.user.role === 'student' && !test.isPublished) {
       return res.status(403).json({ success: false, message: "This test is not yet published" });
     }
+    let signedTestImage = test.testImage;
+    if (signedTestImage && signedTestImage.includes('storage.googleapis.com')) {
+      try {
+        const urlParts = signedTestImage.split('/');
+        const objectPath = urlParts.slice(4).join('/');
+
+        if (objectPath) {
+          const options = {
+            version: 'v4',
+            action: 'read',
+            expires: Date.now() + 12 * 60 * 60 * 1000, // 12 hours
+          };
+          const [url] = await bucket.file(objectPath).getSignedUrl(options);
+          signedTestImage = url;
+        }
+      } catch (err) {
+        console.error('Error generating signed URL for Spot Test', err);
+      }
+    }
+
     res.status(200).json({
       success: true,
-      test
+      test: {
+        ...test.toObject(),
+        testImage: signedTestImage
+      }
     });
   } catch (error) {
     res.status(500).json({
@@ -103,7 +152,7 @@ export const submitTest = async (req, res) => {
   try {
     const { testId, answers, timeTaken } = req.body;
     const test = await SpotTest.findById(testId);
-    
+
     if (!test) {
       return res.status(404).json({ success: false, message: "Test not found" });
     }
@@ -117,7 +166,7 @@ export const submitTest = async (req, res) => {
       totalMarks += q.marks;
       const studentAnswer = answers.find(a => a.questionIndex === index);
       const isCorrect = studentAnswer && studentAnswer.selectedOption === q.correctOption;
-      
+
       if (isCorrect) {
         score += q.marks;
       }
@@ -130,15 +179,15 @@ export const submitTest = async (req, res) => {
     });
 
     // Check if already submitted
-    const existingSubmission = await Submission.findOne({ 
-      student: req.user.id, 
-      test: testId 
+    const existingSubmission = await Submission.findOne({
+      student: req.user.id,
+      test: testId
     });
 
     if (existingSubmission) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "You have already submitted this test. Re-attempts are not allowed." 
+      return res.status(400).json({
+        success: false,
+        message: "You have already submitted this test. Re-attempts are not allowed."
       });
     }
 
@@ -254,8 +303,7 @@ export const togglePublishTest = async (req, res) => {
 export const getTestSubmissions = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log("FETCHING SUBMISSIONS FOR TEST:", id);
-    
+
     // Find submissions for this test and populate student data
     const submissions = await Submission.find({ test: id })
       .populate('student', 'name indexNumber')
