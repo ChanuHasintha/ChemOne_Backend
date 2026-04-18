@@ -8,6 +8,7 @@ import {
     deleteWorksheetAnswer,
     uploadOfficialAnswer,
     confirmWorksheetSubmission,
+    viewWorksheetWithWatermark,
 } from "../controllers/worksheetController.js";
 import { protect } from "../middleware/authMiddleware.js";
 
@@ -20,6 +21,9 @@ router.post("/", upload.single("file"), uploadWorksheet);
 
 // Get all
 router.get("/", protect, getWorksheets);
+
+// Get single with Watermark (Student)
+router.get("/:id/view", protect, viewWorksheetWithWatermark);
 
 // Delete (Admin)
 router.delete("/:id", protect, deleteWorksheet);

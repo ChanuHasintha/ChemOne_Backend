@@ -1,9 +1,6 @@
 import express from 'express';
 import multer from 'multer';
 import bucket from '../config/gcs.js';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const router = express.Router();
 

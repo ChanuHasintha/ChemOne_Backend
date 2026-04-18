@@ -6,7 +6,7 @@ import bucket from '../config/gcs.js';
 export const createTest = async (req, res) => {
   try {
     const { title, description, duration, batch, questions, testType, testImage } = req.body;
-    
+
     // CreatedBy comes from auth middleware (protect)
     const newTest = await SpotTest.create({
       title,
@@ -16,7 +16,7 @@ export const createTest = async (req, res) => {
       questions,
       testType,
       testImage,
-      createdBy: req.user.id 
+      createdBy: req.user.id
     });
 
     res.status(201).json({
@@ -41,19 +41,19 @@ export const getTests = async (req, res) => {
     let query = {};
     if (req.user.role === 'student') {
       // Student only sees tests for their batch or 'all' AND are published
-      query = { 
+      query = {
         batch: { $in: [req.user.batch, 'all'] },
         isPublished: true
       };
     }
 
     const tests = await SpotTest.find(query).sort({ createdAt: -1 }).lean();
-    
+
     const submissions = await Submission.find({ student: req.user.id });
-    
+
     const testsWithStatus = await Promise.all(tests.map(async test => {
       const submission = submissions.find(s => s.test.toString() === test._id.toString());
-      
+
       let signedTestImage = test.testImage;
       // If it's a GCS URL, generate a signed URL
       if (signedTestImage && signedTestImage.includes('storage.googleapis.com')) {
@@ -62,7 +62,7 @@ export const getTests = async (req, res) => {
           // Extract the object path (e.g. "spot_tests/filename.jpg")
           // Assuming format: https://storage.googleapis.com/BUCKET_NAME/spot_tests/filename
           const objectPath = urlParts.slice(4).join('/');
-          
+
           if (objectPath) {
             const options = {
               version: 'v4',
@@ -116,7 +116,7 @@ export const getTestById = async (req, res) => {
       try {
         const urlParts = signedTestImage.split('/');
         const objectPath = urlParts.slice(4).join('/');
-        
+
         if (objectPath) {
           const options = {
             version: 'v4',
@@ -152,7 +152,7 @@ export const submitTest = async (req, res) => {
   try {
     const { testId, answers, timeTaken } = req.body;
     const test = await SpotTest.findById(testId);
-    
+
     if (!test) {
       return res.status(404).json({ success: false, message: "Test not found" });
     }
@@ -166,7 +166,7 @@ export const submitTest = async (req, res) => {
       totalMarks += q.marks;
       const studentAnswer = answers.find(a => a.questionIndex === index);
       const isCorrect = studentAnswer && studentAnswer.selectedOption === q.correctOption;
-      
+
       if (isCorrect) {
         score += q.marks;
       }
@@ -179,15 +179,15 @@ export const submitTest = async (req, res) => {
     });
 
     // Check if already submitted
-    const existingSubmission = await Submission.findOne({ 
-      student: req.user.id, 
-      test: testId 
+    const existingSubmission = await Submission.findOne({
+      student: req.user.id,
+      test: testId
     });
 
     if (existingSubmission) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "You have already submitted this test. Re-attempts are not allowed." 
+      return res.status(400).json({
+        success: false,
+        message: "You have already submitted this test. Re-attempts are not allowed."
       });
     }
 
@@ -303,7 +303,7 @@ export const togglePublishTest = async (req, res) => {
 export const getTestSubmissions = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Find submissions for this test and populate student data
     const submissions = await Submission.find({ test: id })
       .populate('student', 'name indexNumber')

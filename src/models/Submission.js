@@ -10,7 +10,7 @@ const submissionSchema = new mongoose.Schema({
   }],
   score: { type: Number, default: 0 },
   totalMarks: { type: Number },
-  timeTaken: { type: Number, required: true }, // duration in seconds
+  timeTaken: { type: Number, default: 0 }, // duration in seconds
 }, { timestamps: true });
 
 const Submission = mongoose.model('Submission', submissionSchema);

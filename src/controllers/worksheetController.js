@@ -1,9 +1,8 @@
 import Worksheet from '../models/Worksheet.js';
 import WorksheetSubmission from '../models/WorksheetSubmission.js';
 import bucket from '../config/gcs.js';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import User from '../models/User.js';
 
 // CREATE worksheet upload
 export const uploadWorksheet = async (req, res) => {
@@ -62,6 +61,8 @@ export const getWorksheets = async (req, res) => {
         }
 
         // Generate signed URLs so files in private buckets can be opened/downloaded
+        const tokenForLinks = req.headers.authorization?.split(' ')[1] || req.query.token || '';
+
         const mappedData = await Promise.all(data.map(async (ws) => {
             let signedFileUrl = ws.fileUrl; // Fallback to original URL
             if (ws.publicId) {
@@ -122,7 +123,9 @@ export const getWorksheets = async (req, res) => {
 
             return {
                 ...ws.toObject(),
-                fileUrl: signedFileUrl,
+                fileUrl: (req.user.role === 'student' && ws.publicId) 
+                    ? `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/worksheets/${ws._id}/view?token=${tokenForLinks}` 
+                    : signedFileUrl,
                 officialAnswerUrl: signedOfficialAnswerUrl,
                 mySubmission
             };
@@ -131,6 +134,62 @@ export const getWorksheets = async (req, res) => {
         res.json(mappedData);
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+};
+
+// GET single worksheet with watermark (Student only)
+export const viewWorksheetWithWatermark = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const worksheet = await Worksheet.findById(id);
+        if (!worksheet) return res.status(404).json({ message: 'Worksheet not found' });
+
+        const student = await User.findById(req.user.id);
+        const watermarkText = student.indexNumber || student.name || 'STUDENT';
+
+        // Fetch PDF from GCS
+        const [pdfBuffer] = await bucket.file(worksheet.publicId).download();
+
+        // Load PDF
+        const pdfDoc = await PDFDocument.load(pdfBuffer);
+        const pages = pdfDoc.getPages();
+        const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+        pages.forEach((page) => {
+            const { width, height } = page.getSize();
+            
+            // Add diagonal watermark in center
+            page.drawText(watermarkText, {
+                x: width / 2 - 150,
+                y: height / 2,
+                size: 50,
+                font: font,
+                color: rgb(0.8, 0.2, 0.2), // Faint Reddish
+                opacity: 0.15,
+                rotate: { angle: 45, type: 'degrees' },
+            });
+
+            // Add small watermark at top and bottom of each page
+            const footerText = `Student ID: ${watermarkText} | This document is for personal use only.`;
+            page.drawText(footerText, {
+                x: 40,
+                y: 20,
+                size: 8,
+                font: font,
+                color: rgb(0.5, 0.5, 0.5),
+                opacity: 0.5,
+            });
+        });
+
+        const modifiedPdf = await pdfDoc.save();
+        res.contentType('application/pdf');
+        // Set disposition so browser knows it's an inline viewable but downloadable file
+        res.setHeader('Content-Disposition', `inline; filename="${worksheet.fileName}"`);
+        res.send(Buffer.from(modifiedPdf));
+
+    } catch (error) {
+        console.error('Watermark Error:', error);
+        res.status(500).json({ message: 'Error processing PDF: ' + error.message });
     }
 };
 

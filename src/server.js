@@ -1,18 +1,19 @@
+import "./config/env.js";
+
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import connectDB from "./config/db.js";
 import authRoutes from "./routes/authRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 import spotRoutes from "./routes/spotRoutes.js";
 import worksheetRoutes from "./routes/worksheetRoutes.js";
+import physicalExamRoutes from "./routes/physicalExamRoutes.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-dotenv.config();
 connectDB();
 
 const app = express();
@@ -29,6 +30,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/tests", spotRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/worksheets", worksheetRoutes);
+app.use("/api/physical-exams", physicalExamRoutes);
 
 app.get("/", (req, res) => {
   res.send("LMS API Running...");
