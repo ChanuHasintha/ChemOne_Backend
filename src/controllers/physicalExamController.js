@@ -1,5 +1,6 @@
 import PhysicalExam from '../models/PhysicalExam.js';
 import PhysicalResult from '../models/PhysicalResult.js';
+import nodemailer from 'nodemailer';
 
 // Create a new physical exam record
 export const createPhysicalExam = async (req, res) => {
@@ -32,7 +33,7 @@ export const getPhysicalExams = async (req, res) => {
 export const uploadPhysicalResults = async (req, res) => {
   try {
     const { examId, results } = req.body; // results: [{ studentId, score }]
-    
+
     if (!examId || !results || !Array.isArray(results)) {
       return res.status(400).json({ success: false, message: "Invalid data" });
     }
@@ -81,11 +82,65 @@ export const getBatchResultsForStudent = async (req, res) => {
     }
 
     const results = await PhysicalResult.find({ exam: id })
-      .populate('student', 'name indexNumber batch')
+      .populate({
+        path: 'student',
+        select: 'name indexNumber batch',
+        match: { batch: studentBatch } // Only match students from the current student's batch
+      })
       .sort({ score: -1 }); // Rank by score
 
-    res.status(200).json({ success: true, results });
+    // Filter out null students (those not in the current student's batch)
+    const filteredResults = results.filter(res => res.student);
+
+    res.status(200).json({ success: true, results: filteredResults });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// Send email notification to students
+export const notifyExamResults = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const exam = await PhysicalExam.findById(id);
+    if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+
+    const results = await PhysicalResult.find({ exam: id }).populate('student', 'name email');
+    if (!results.length) {
+      return res.status(400).json({ success: false, message: "No results found to notify. Please save results first." });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+
+    let sentCount = 0;
+    await Promise.all(results.map(async (result) => {
+      if (result.student && result.student.email) {
+        const mailOptions = {
+          from: `"ChemBridge" <${process.env.SMTP_USER}>`,
+          to: result.student.email,
+          subject: `Exam Results Out:ChemBridge`,
+          text: `Hello ${result.student.name},\n\nYour exam results are out now. You can go to the website and view your results.\n\nBest regards,\nChemBridge Team`
+        };
+        try {
+          await transporter.sendMail(mailOptions);
+          sentCount++;
+        } catch (err) {
+          console.error(`Failed to send email to ${result.student.email}:`, err);
+        }
+      }
+    }));
+
+    res.status(200).json({ success: true, message: `Notification emails sent to ${sentCount} students.` });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
