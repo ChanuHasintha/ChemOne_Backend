@@ -8,6 +8,7 @@ import uploadRoutes from "./routes/uploadRoutes.js";
 import spotRoutes from "./routes/spotRoutes.js";
 import worksheetRoutes from "./routes/worksheetRoutes.js";
 import physicalExamRoutes from "./routes/physicalExamRoutes.js";
+import gameRoutes from "./routes/gameRoutes.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -31,6 +32,7 @@ app.use("/api/tests", spotRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/worksheets", worksheetRoutes);
 app.use("/api/physical-exams", physicalExamRoutes);
+app.use("/api/games", gameRoutes);
 
 app.get("/", (req, res) => {
   res.send("LMS API Running...");

@@ -208,6 +208,13 @@ export const loginUser = async (req, res) => {
       });
     }
 
+    // Check if account is blocked
+    if (user.isBlocked) {
+      return res.status(403).json({
+        message: "Your account has been temporarily blocked. Please contact the administrator.",
+      });
+    }
+
     // Generate token
     const token = jwt.sign(
       { id: user._id, role: user.role, batch: user.batch },
@@ -368,11 +375,69 @@ export const updateUserProfile = async (req, res) => {
 export const getAllStudents = async (req, res) => {
   try {
     const students = await User.find({ role: "student" })
-      .select("name indexNumber batch email createdAt")
+      .select("name indexNumber batch email createdAt isBlocked blockedAt")
       .sort({ createdAt: -1 });
     res.json(students);
   } catch (error) {
     console.error("Get all students error:", error);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ─── DELETE STUDENT (ADMIN ONLY) ─────────────────────────────────
+export const deleteStudent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const student = await User.findById(id);
+    if (!student) {
+      return res.status(404).json({ message: "Student not found." });
+    }
+
+    if (student.role !== "student") {
+      return res.status(400).json({ message: "Can only delete student accounts." });
+    }
+
+    await User.findByIdAndDelete(id);
+
+    res.json({ message: "Student account deleted successfully." });
+  } catch (error) {
+    console.error("Delete student error:", error);
+    res.status(500).json({ message: "Server error. Please try again later." });
+  }
+};
+
+// ─── TOGGLE BLOCK STUDENT (ADMIN ONLY) ───────────────────────────
+export const toggleBlockStudent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const student = await User.findById(id);
+    if (!student) {
+      return res.status(404).json({ message: "Student not found." });
+    }
+
+    if (student.role !== "student") {
+      return res.status(400).json({ message: "Can only block student accounts." });
+    }
+
+    student.isBlocked = !student.isBlocked;
+    student.blockedAt = student.isBlocked ? new Date() : null;
+    await student.save();
+
+    res.json({
+      message: student.isBlocked
+        ? "Student account has been blocked."
+        : "Student account has been unblocked.",
+      student: {
+        id: student._id,
+        name: student.name,
+        isBlocked: student.isBlocked,
+        blockedAt: student.blockedAt,
+      },
+    });
+  } catch (error) {
+    console.error("Toggle block student error:", error);
+    res.status(500).json({ message: "Server error. Please try again later." });
   }
 };

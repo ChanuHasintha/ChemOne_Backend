@@ -275,9 +275,16 @@ export const togglePublishTest = async (req, res) => {
     const { id } = req.params;
     const { isPublished } = req.body;
 
+    const updateData = { isPublished };
+    if (isPublished) {
+      updateData.publishedAt = new Date();
+    } else {
+      updateData.publishedAt = null;
+    }
+
     const updatedTest = await SpotTest.findByIdAndUpdate(
       id,
-      { isPublished },
+      updateData,
       { new: true }
     );
 

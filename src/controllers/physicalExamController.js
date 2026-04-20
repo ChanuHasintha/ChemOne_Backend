@@ -29,6 +29,40 @@ export const getPhysicalExams = async (req, res) => {
   }
 };
 
+// Update a physical exam
+export const updatePhysicalExam = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, date, batch, totalMarks } = req.body;
+    const exam = await PhysicalExam.findByIdAndUpdate(
+      id,
+      { title, date, batch, totalMarks },
+      { new: true }
+    );
+    if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+    res.status(200).json({ success: true, exam });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Delete a physical exam and all its results
+export const deletePhysicalExam = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const exam = await PhysicalExam.findById(id);
+    if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+
+    // Delete all results associated with this exam
+    await PhysicalResult.deleteMany({ exam: id });
+    await PhysicalExam.findByIdAndDelete(id);
+
+    res.status(200).json({ success: true, message: "Exam and all associated results deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // Upload results for a physical exam
 export const uploadPhysicalResults = async (req, res) => {
   try {
@@ -98,36 +132,78 @@ export const getBatchResultsForStudent = async (req, res) => {
   }
 };
 
+// Get a student's own history of physical exam results
+export const getMyPhysicalResults = async (req, res) => {
+  try {
+    let studentId = req.user.id;
+    
+    // Admin can request history for any student
+    if (req.user.role === 'admin' && req.query.studentId) {
+      studentId = req.query.studentId;
+    }
+
+    const results = await PhysicalResult.find({ student: studentId })
+      .populate('exam', 'title date totalMarks')
+      .sort({ 'exam.date': -1 });
+    
+    // Sort manually if populate sort didn't work as expected
+    const sortedResults = results.sort((a,b) => new Date(b.exam?.date) - new Date(a.exam?.date));
+
+    res.status(200).json({ success: true, results: sortedResults });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // Send email notification to students
 export const notifyExamResults = async (req, res) => {
   try {
     const { id } = req.params;
+    const { batch } = req.body; // New: optional batch filter
+
     const exam = await PhysicalExam.findById(id);
     if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
 
-    const results = await PhysicalResult.find({ exam: id }).populate('student', 'name email');
-    if (!results.length) {
-      return res.status(400).json({ success: false, message: "No results found to notify. Please save results first." });
+    // Build the query for results
+    const query = { exam: id };
+    
+    // We'll populate student and then filter if batch is specified
+    const results = await PhysicalResult.find(query).populate('student', 'name email batch');
+    
+    let filteredResults = results;
+    if (batch && batch !== "All Batches") {
+      filteredResults = results.filter(r => r.student && r.student.batch === batch);
     }
 
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: process.env.SMTP_PORT,
-      secure: false,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
+    if (!filteredResults.length) {
+      return res.status(400).json({ success: false, message: "No results found for the selected criteria to notify." });
+    }
+
+    // Use common transporter config if available, else standard
+    let transporter;
+    try {
+      const { getTransporter } = await import('../config/nodemailer.js');
+      transporter = await getTransporter();
+    } catch (e) {
+      transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: process.env.SMTP_PORT,
+        secure: false,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+      });
+    }
 
     let sentCount = 0;
-    await Promise.all(results.map(async (result) => {
+    await Promise.all(filteredResults.map(async (result) => {
       if (result.student && result.student.email) {
         const mailOptions = {
-          from: `"ChemBridge" <${process.env.SMTP_USER}>`,
+          from: `"ChemBridge" <${process.env.SMTP_USER || 'support@chembridge.app'}>`,
           to: result.student.email,
-          subject: `Exam Results Out:ChemBridge`,
-          text: `Hello ${result.student.name},\n\nYour exam results are out now. You can go to the website and view your results.\n\nBest regards,\nChemBridge Team`
+          subject: `Exam Results Out: ChemBridge`,
+          text: `Hello ${result.student.name},\n\nYour results for "${exam.title}" are out now. You scored ${result.score}/${exam.totalMarks}.\n\nYou can log in to the student dashboard to view your detailed rank.\n\nBest regards,\nChemBridge Team`
         };
         try {
           await transporter.sendMail(mailOptions);
