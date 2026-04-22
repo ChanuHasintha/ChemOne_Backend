@@ -106,7 +106,7 @@ export const getWorksheets = async (req, res) => {
             // Only provide official answer URL if admin, 
             // OR if student AND they have a confirmed submission
             const isConfirmed = mySubmission && mySubmission.isConfirmed;
-            if (req.user.role === 'admin' || isConfirmed) {
+            if (req.user.role === 'instructor' || isConfirmed) {
                 if (ws.officialAnswerPublicId) {
                     try {
                         const [url] = await bucket.file(ws.officialAnswerPublicId).getSignedUrl({

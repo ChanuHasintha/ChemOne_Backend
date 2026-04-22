@@ -138,7 +138,7 @@ export const getMyPhysicalResults = async (req, res) => {
     let studentId = req.user.id;
     
     // Admin can request history for any student
-    if (req.user.role === 'admin' && req.query.studentId) {
+    if (req.user.role === 'instructor' && req.query.studentId) {
       studentId = req.query.studentId;
     }
 
