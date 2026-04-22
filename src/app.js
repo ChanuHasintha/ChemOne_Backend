@@ -10,6 +10,7 @@ import uploadRoutes from "./routes/uploadRoutes.js";
 import spotRoutes from "./routes/spotRoutes.js";
 import worksheetRoutes from "./routes/worksheetRoutes.js";
 import physicalExamRoutes from "./routes/physicalExamRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.use("/api/tests", spotRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/worksheets", worksheetRoutes);
 app.use("/api/physical-exams", physicalExamRoutes);
+app.use("/api/admin", adminRoutes);
 
 // CHATBOT ROUTE
 app.use("/api/chat", chatRoutes);
