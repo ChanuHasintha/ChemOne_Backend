@@ -30,10 +30,52 @@ const userSchema = new mongoose.Schema(
       },
       default: "student",
     },
+    batch: {
+      type: String,
+      trim: true,
+    },
+    indexNumber: {
+      type: String,
+      unique: true,
+      sparse: true, // Allows null/undefined for instructors
+    },
     resetPasswordOTP: String,
     resetPasswordOTPExpires: Date,
   },
   { timestamps: true }
 );
+
+// Pre-save hook to generate index number for students
+userSchema.pre("save", async function () {
+  if (this.isNew && this.role === "student" && !this.indexNumber) {
+    try {
+      // Use last two digits of the batch (e.g., "2026" -> "26")
+      const batchYear = this.batch ? this.batch.toString().slice(-2) : new Date().getFullYear().toString().slice(-2);
+      
+      // Find the last student of the same batch to get the latest sequence number
+      const lastStudent = await this.constructor.findOne(
+        { role: "student", indexNumber: { $regex: new RegExp(`^STU-${batchYear}-`) } },
+        { indexNumber: 1 },
+        { sort: { indexNumber: -1 } }
+      ).lean();
+
+      let sequence = 1;
+      if (lastStudent && lastStudent.indexNumber) {
+        const parts = lastStudent.indexNumber.split("-");
+        const lastSeqStr = parts[parts.length - 1];
+        const lastSequence = parseInt(lastSeqStr, 10);
+        if (!isNaN(lastSequence)) {
+          sequence = lastSequence + 1;
+        }
+      }
+
+      // Format: STU-YY-XXXX (e.g., STU-26-0001)
+      this.indexNumber = `STU-${batchYear}-${sequence.toString().padStart(4, "0")}`;
+    } catch (error) {
+      console.error("PRE-SAVE HOOK ERROR:", error);
+      throw error;
+    }
+  }
+});
 
 export default mongoose.model("User", userSchema);

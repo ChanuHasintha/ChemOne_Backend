@@ -1,4 +1,5 @@
 import User from "../models/User.js";
+import OTP from "../models/OTP.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
@@ -13,7 +14,7 @@ const sendOTPEmail = async (email, otp) => {
     const transporter = await getTransporter();
 
     const info = await transporter.sendMail({
-      from: '"ChemOne Support" <support@chemone.app>',
+      from: '"ChemBridge Support" <support@chembridge.app>',
       to: email,
       subject: "Password Reset OTP",
       text: `Your OTP for resetting your password is: ${otp}. It is valid for 10 minutes.`,
@@ -34,15 +35,50 @@ const sendOTPEmail = async (email, otp) => {
   }
 };
 
+
+// ─── SEND SIGNUP OTP ─────────────────────────────────────────
+export const sendSignupOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required." });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(409).json({ message: "An account with this email already exists." });
+    }
+
+    // Delete any existing OTP for this email
+    await OTP.deleteMany({ email: email.toLowerCase() });
+
+    const otp = generateOTP();
+
+    await OTP.create({
+      email: email.toLowerCase(),
+      otp: otp,
+    });
+
+
+
+    res.status(200).json({ message: "OTP sent successfully to your email." });
+  } catch (error) {
+    console.error("Send signup OTP error:", error);
+    res.status(500).json({ message: "Server error. Please try again later." });
+  }
+};
+
 // ─── REGISTER ────────────────────────────────────────────────
 export const registerUser = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, batch } = req.body;
 
     // --- Input validation ---
     if (!name || !email || !password) {
       return res.status(400).json({
-        message: "All fields are required (name, email, password).",
+        message: "All fields are required.",
       });
     }
 
@@ -73,6 +109,13 @@ export const registerUser = async (req, res) => {
     const validRoles = ["student", "instructor"];
     const userRole = role && validRoles.includes(role) ? role : "student";
 
+    // Validate batch for students
+    if (userRole === "student" && (!batch || batch.trim() === "")) {
+      return res.status(400).json({
+        message: "Please select your batch.",
+      });
+    }
+
     // Check if user already exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
@@ -81,21 +124,31 @@ export const registerUser = async (req, res) => {
       });
     }
 
+
+
     // Hash password
     const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(password, salt);
 
     // Create user
-    const user = await User.create({
+    const userPayload = {
       name: trimmedName,
       email: email.toLowerCase(),
       password: hashedPassword,
       role: userRole,
-    });
+    };
+
+    if (userRole === "student" && batch) {
+      userPayload.batch = batch.trim();
+    }
+
+    const user = await User.create(userPayload);
+
+
 
     // Generate JWT token for auto-login
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: user._id, role: user.role, batch: user.batch },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -108,6 +161,9 @@ export const registerUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        batch: user.batch,
+        indexNumber: user.indexNumber,
+        createdAt: user.createdAt,
       },
     });
   } catch (error) {
@@ -154,7 +210,7 @@ export const loginUser = async (req, res) => {
 
     // Generate token
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: user._id, role: user.role, batch: user.batch },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -167,6 +223,9 @@ export const loginUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        batch: user.batch,
+        indexNumber: user.indexNumber,
+        createdAt: user.createdAt,
       },
     });
   } catch (error) {
@@ -196,7 +255,7 @@ export const forgotPassword = async (req, res) => {
     // Valid for 10 minutes
     user.resetPasswordOTP = otp;
     user.resetPasswordOTPExpires = Date.now() + 10 * 60 * 1000;
-    
+
     await user.save();
     await sendOTPEmail(user.email, otp);
 
@@ -224,12 +283,12 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ 
+    const user = await User.findOne({
       email: email.toLowerCase(),
       resetPasswordOTP: otp,
       resetPasswordOTPExpires: { $gt: Date.now() }
     });
-    
+
     if (!user) {
       return res.status(400).json({
         message: "Invalid or expired OTP.",
@@ -252,5 +311,68 @@ export const resetPassword = async (req, res) => {
     res.status(500).json({
       message: "Server error. Please try again later.",
     });
+  }
+};
+
+// ─── GET CURRENT USER PROFILE ───────────────────────────────
+export const getUserProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("-password");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error("Profile error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ─── UPDATE USER PROFILE ───────────────────────────────
+export const updateUserProfile = async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (name) user.name = name.trim();
+    if (email) user.email = email.toLowerCase().trim();
+
+    const updatedUser = await user.save();
+
+    res.json({
+      message: "Profile updated successfully",
+      user: {
+        id: updatedUser._id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        batch: updatedUser.batch,
+        indexNumber: updatedUser.indexNumber,
+        createdAt: updatedUser.createdAt,
+      },
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ message: "Email already in use" });
+    }
+    console.error("Update profile error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ─── GET ALL STUDENTS (ADMIN ONLY) ───────────────────────────────
+export const getAllStudents = async (req, res) => {
+  try {
+    const students = await User.find({ role: "student" })
+      .select("name indexNumber batch email createdAt")
+      .sort({ createdAt: -1 });
+    res.json(students);
+  } catch (error) {
+    console.error("Get all students error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
