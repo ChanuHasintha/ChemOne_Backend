@@ -8,15 +8,43 @@ dotenv.config();
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Select model
-const chatModel = genAI.getGenerativeModel({
-  model: "gemini-2.0-flash", // Reverted to 2.0-flash as it's generally preferred for RAG
-});
+// Models in priority order (tested and confirmed working)
+const MODEL_CHAIN = [
+  "gemini-2.5-flash",        // Primary - fast & within quota
+  "gemini-3-flash-preview",  // Fallback 1
+  "gemini-2.0-flash",        // Fallback 2
+];
 
-// Fallback model
-const fallbackModel = genAI.getGenerativeModel({
-  model: "gemini-flash-latest",
-});
+// Helper: try generating content across multiple models with retry
+const generateWithFallback = async (prompt) => {
+  let lastError = null;
+
+  for (const modelName of MODEL_CHAIN) {
+    try {
+      console.log(`Trying model: ${modelName}`);
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(prompt);
+      console.log(`Success with model: ${modelName}`);
+      return result;
+    } catch (error) {
+      const status = error.status || error.response?.status || error.statusCode;
+      console.warn(`Model ${modelName} failed [${status}]: ${error.message?.slice(0, 100)}`);
+      lastError = error;
+
+      // If it's a rate limit error, wait briefly before trying the next model
+      if (status === 429 || status === 503) {
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+
+      // For other errors (e.g. 404), skip immediately to next model
+      continue;
+    }
+  }
+
+  // All models failed — throw the last error
+  throw lastError;
+};
 
 // Chat Controller
 export const handleChat = async (req, res) => {
@@ -82,19 +110,8 @@ Answer:`;
 
     console.log("Calling Gemini API with augmented prompt...");
 
-    // 4. Call Gemini
-    let result;
-    try {
-      result = await chatModel.generateContent(prompt);
-    } catch (firstError) {
-      const status = firstError.status || firstError.response?.status || firstError.statusCode;
-      if (status === 429) {
-        console.log("Primary model hit quota. Trying fallback model...");
-        result = await fallbackModel.generateContent(prompt);
-      } else {
-        throw firstError;
-      }
-    }
+    // 4. Call Gemini with automatic fallback across models
+    const result = await generateWithFallback(prompt);
 
     const reply = result.response.text();
     console.log("Gemini response sent successfully");
@@ -105,8 +122,15 @@ Answer:`;
     console.error("=== CHAT ERROR ===");
     console.error(error);
     
-    res.status(500).json({
-      reply: `Error: ${error.message || "Unable to get response 😢"}`,
-    });
+    const status = error.status || error.response?.status || error.statusCode;
+    if (status === 429) {
+      res.status(429).json({
+        reply: "The AI is currently busy due to high demand. Please try again in a minute. ⏳",
+      });
+    } else {
+      res.status(500).json({
+        reply: `Error: ${error.message || "Unable to get response 😢"}`,
+      });
+    }
   }
 };

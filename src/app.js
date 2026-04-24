@@ -6,10 +6,6 @@ import { fileURLToPath } from "url";
 // ROUTES
 import chatRoutes from "./routes/chatRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
-import uploadRoutes from "./routes/uploadRoutes.js";
-import spotRoutes from "./routes/spotRoutes.js";
-import worksheetRoutes from "./routes/worksheetRoutes.js";
-import physicalExamRoutes from "./routes/physicalExamRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 
 const app = express();
@@ -31,10 +27,6 @@ app.use(
 
 // ROUTES
 app.use("/api/auth", authRoutes);
-app.use("/api/tests", spotRoutes);
-app.use("/api/upload", uploadRoutes);
-app.use("/api/worksheets", worksheetRoutes);
-app.use("/api/physical-exams", physicalExamRoutes);
 app.use("/api/admin", adminRoutes);
 
 // CHATBOT ROUTE

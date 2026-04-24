@@ -1,6 +1,6 @@
 import { extractPDF } from "../utils/pdf.js";
 import { chunkText } from "../utils/chunkText.js";
-import { createEmbedding } from "../utils/embedding.js";
+import { createEmbedding, createBatchEmbeddings } from "../utils/embedding.js";
 import { index } from "../utils/pinecone.js";
 import bucket from "../config/gcs.js";
 import KnowledgeBase from "../models/KnowledgeBase.js";
@@ -45,77 +45,97 @@ export const handleProcessPDF = async (req, res) => {
     knowledgeRecord.status = "indexing";
     await knowledgeRecord.save();
 
-    console.log(`Step 2: Processing PDF content: ${filePath}`);
-
-    // 1. Extract text
-    const text = await extractPDF(filePath);
-    if (!text) {
-      throw new Error("Failed to extract text from PDF");
-    }
-
-    // 2. Chunk text
-    const chunks = chunkText(text, 500);
-    console.log(`Created ${chunks.length} chunks.`);
-
-    // 3. Embed and Upsert
-    const upserts = [];
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      const embedding = await createEmbedding(chunk);
-      
-      upserts.push({
-        id: `${knowledgeRecord._id}-chunk-${i}`,
-        values: embedding,
-        metadata: {
-          text: chunk,
-          source: fileName,
-          knowledgeId: knowledgeRecord._id.toString(),
-          chunkIndex: i,
-        },
-      });
-    }
-
-    // Pinecone upsert
-    const batchSize = 50;
-    for (let i = 0; i < upserts.length; i += batchSize) {
-      const batch = upserts.slice(i, i + batchSize);
-      await index.upsert(batch);
-    }
-
-    // Update record to ready
-    knowledgeRecord.status = "ready";
-    knowledgeRecord.chunkCount = chunks.length;
-    await knowledgeRecord.save();
-
-    console.log("Pinecone upsert completed.");
-
-    // Cleanup local file
-    try {
-      fs.unlinkSync(filePath);
-    } catch (err) {
-      console.warn("Could not delete temporary file:", err.message);
-    }
-
-    res.json({
+    // Respond to client immediately so they don't have to wait
+    res.status(202).json({
       success: true,
-      message: `Successfully indexed ${chunks.length} chunks from ${fileName}`,
+      message: "File uploaded successfully. Processing and indexing started in the background.",
       data: knowledgeRecord,
     });
 
+    // Run the heavy processing in the background
+    (async () => {
+      try {
+        console.log(`Step 2: Processing PDF content: ${filePath}`);
+
+        // 1. Extract text
+        const text = await extractPDF(filePath);
+        if (!text) {
+          throw new Error("Failed to extract text from PDF");
+        }
+
+        // 2. Chunk text
+        const chunks = chunkText(text, 500);
+        console.log(`Created ${chunks.length} chunks.`);
+
+        // 3. Embed and Upsert
+        console.log(`Generating embeddings for ${chunks.length} chunks...`);
+        const embeddings = await createBatchEmbeddings(chunks);
+        
+        const upserts = [];
+        for (let i = 0; i < chunks.length; i++) {
+          upserts.push({
+            id: `${knowledgeRecord._id}-chunk-${i}`,
+            values: embeddings[i],
+            metadata: {
+              text: chunks[i],
+              source: fileName,
+              knowledgeId: knowledgeRecord._id.toString(),
+              chunkIndex: i,
+            },
+          });
+        }
+
+        // Pinecone upsert
+        const batchSize = 50;
+        for (let i = 0; i < upserts.length; i += batchSize) {
+          const batch = upserts.slice(i, i + batchSize);
+          await index.upsert({ records: batch });
+        }
+
+        // Update record to ready
+        knowledgeRecord.status = "ready";
+        knowledgeRecord.chunkCount = chunks.length;
+        await knowledgeRecord.save();
+
+        console.log("Pinecone upsert completed.");
+
+        // Cleanup local file
+        try {
+          fs.unlinkSync(filePath);
+        } catch (err) {
+          console.warn("Could not delete temporary file:", err.message);
+        }
+
+      } catch (error) {
+        console.error("Background PDF Processing Error:", error);
+        
+        try {
+          knowledgeRecord.status = "error";
+          knowledgeRecord.error = error.message;
+          await knowledgeRecord.save();
+        } catch (dbErr) {
+          console.error("Failed to update status to error:", dbErr);
+        }
+      }
+    })();
+
   } catch (error) {
-    console.error("PDF Processing Error:", error);
+    console.error("PDF Upload Error:", error);
     
-    if (knowledgeRecord) {
+    if (knowledgeRecord && knowledgeRecord.status !== "indexing") {
       knowledgeRecord.status = "error";
       knowledgeRecord.error = error.message;
       await knowledgeRecord.save();
     }
 
-    res.status(500).json({
-      success: false,
-      message: "Failed to process PDF",
-      error: error.message,
-    });
+    // Only send error response if headers haven't been sent
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to upload PDF",
+        error: error.message,
+      });
+    }
   }
 };
 
