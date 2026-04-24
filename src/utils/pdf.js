@@ -1,10 +1,15 @@
 import fs from "fs";
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const pdf = require("pdf-parse");
+import { PDFParse } from "pdf-parse";
 
 export const extractPDF = async (filePath) => {
-  const buffer = fs.readFileSync(filePath);
-  const data = await pdf(buffer);
-  return data.text;
+  try {
+    const buffer = fs.readFileSync(filePath);
+    const parser = new PDFParse({ data: buffer });
+    const result = await parser.getText();
+    await parser.destroy();
+    return result.text;
+  } catch (error) {
+    console.error("PDF Extraction Error:", error);
+    throw error;
+  }
 };

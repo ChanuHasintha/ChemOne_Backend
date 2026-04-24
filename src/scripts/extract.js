@@ -1,13 +1,12 @@
 import fs from "fs";
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const pdf = require("pdf-parse");
+import { PDFParse } from "pdf-parse";
 
 const extractPDF = async (filePath) => {
   const buffer = fs.readFileSync(filePath);
-  const data = await pdf(buffer);
-
-  return data.text;
+  const parser = new PDFParse({ data: buffer });
+  const result = await parser.getText();
+  await parser.destroy();
+  return result.text;
 };
 
 const text = await extractPDF("./pdfs/Unit 1,2,3.pdf"); 
