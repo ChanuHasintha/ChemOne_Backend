@@ -7,6 +7,7 @@ const worksheetSchema = new mongoose.Schema(
         publicId: String,
         date: String,
         notes: String,
+        batch: String,
         officialAnswerUrl: String,
         officialAnswerPublicId: String,
     },
