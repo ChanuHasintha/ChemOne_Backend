@@ -1,7 +1,6 @@
 import express from "express";
 import { 
   registerUser, 
-  sendSignupOTP,
   loginUser, 
   forgotPassword, 
   resetPassword, 
@@ -14,9 +13,6 @@ import {
 import { protect, adminOnly } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
-
-// Send Signup OTP
-router.post("/send-signup-otp", sendSignupOTP);
 
 // Register
 router.post("/register", registerUser);

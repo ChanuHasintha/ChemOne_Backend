@@ -1,6 +1,7 @@
 import PhysicalExam from '../models/PhysicalExam.js';
 import PhysicalResult from '../models/PhysicalResult.js';
 import nodemailer from 'nodemailer';
+import { getTransporter } from '../config/nodemailer.js';
 
 // Create a new physical exam record
 export const createPhysicalExam = async (req, res) => {
@@ -136,7 +137,7 @@ export const getBatchResultsForStudent = async (req, res) => {
 export const getMyPhysicalResults = async (req, res) => {
   try {
     let studentId = req.user.id;
-    
+
     // Admin can request history for any student
     if (req.user.role === 'instructor' && req.query.studentId) {
       studentId = req.query.studentId;
@@ -145,9 +146,9 @@ export const getMyPhysicalResults = async (req, res) => {
     const results = await PhysicalResult.find({ student: studentId })
       .populate('exam', 'title date totalMarks')
       .sort({ 'exam.date': -1 });
-    
+
     // Sort manually if populate sort didn't work as expected
-    const sortedResults = results.sort((a,b) => new Date(b.exam?.date) - new Date(a.exam?.date));
+    const sortedResults = results.sort((a, b) => new Date(b.exam?.date) - new Date(a.exam?.date));
 
     res.status(200).json({ success: true, results: sortedResults });
   } catch (error) {
@@ -166,10 +167,10 @@ export const notifyExamResults = async (req, res) => {
 
     // Build the query for results
     const query = { exam: id };
-    
+
     // We'll populate student and then filter if batch is specified
     const results = await PhysicalResult.find(query).populate('student', 'name email batch');
-    
+
     let filteredResults = results;
     if (batch && batch !== "All Batches") {
       filteredResults = results.filter(r => r.student && r.student.batch === batch);
@@ -179,40 +180,28 @@ export const notifyExamResults = async (req, res) => {
       return res.status(400).json({ success: false, message: "No results found for the selected criteria to notify." });
     }
 
-    // Use common transporter config if available, else standard
-    let transporter;
-    try {
-      const { getTransporter } = await import('../config/nodemailer.js');
-      transporter = await getTransporter();
-    } catch (e) {
-      transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: process.env.SMTP_PORT,
-        secure: false,
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-      });
-    }
+    // Use common transporter config
+    const transporter = await getTransporter();
 
     let sentCount = 0;
-    await Promise.all(filteredResults.map(async (result) => {
+    for (const result of filteredResults) {
       if (result.student && result.student.email) {
         const mailOptions = {
           from: `"ChemBridge" <${process.env.SMTP_USER || 'support@chembridge.app'}>`,
           to: result.student.email,
           subject: `Exam Results Out: ChemBridge`,
-          text: `Hello ${result.student.name},\n\nYour results for "${exam.title}" are out now. You scored ${result.score}/${exam.totalMarks}.\n\nYou can log in to the student dashboard to view your detailed rank.\n\nBest regards,\nChemBridge Team`
+          text: `Hello ${result.student.name},\n\nYour results for "${exam.title}" are out now.\n\nYou can log in to the website and view your detailed rank.\n\nBest regards,\nChemBridge Team`
         };
         try {
           await transporter.sendMail(mailOptions);
           sentCount++;
+          // Optional: small delay to prevent SMTP throttling
+          await new Promise(resolve => setTimeout(resolve, 100));
         } catch (err) {
           console.error(`Failed to send email to ${result.student.email}:`, err);
         }
       }
-    }));
+    }
 
     res.status(200).json({ success: true, message: `Notification emails sent to ${sentCount} students.` });
   } catch (error) {

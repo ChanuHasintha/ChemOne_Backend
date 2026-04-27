@@ -1,74 +1,8 @@
 import User from "../models/User.js";
-import OTP from "../models/OTP.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import nodemailer from "nodemailer";
-import { getTransporter } from "../config/nodemailer.js";
-
-const generateOTP = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit OTP
-};
-
-const sendOTPEmail = async (email, otp) => {
-  try {
-    const transporter = await getTransporter();
-
-    const info = await transporter.sendMail({
-      from: '"ChemBridge Support" <support@chembridge.app>',
-      to: email,
-      subject: "Password Reset OTP",
-      text: `Your OTP for resetting your password is: ${otp}. It is valid for 10 minutes.`,
-      html: `<p>You requested a password reset. Here is your One-Time Password:</p>
-             <h2 style="color: #4F46E5; letter-spacing: 2px;">${otp}</h2>
-             <p>It is valid for 10 minutes.</p>`,
-    });
-
-    if (!process.env.SMTP_HOST) {
-      console.log("Mock Email sent! Preview URL: %s", nodemailer.getTestMessageUrl(info));
-    }
-  } catch (error) {
-    console.error("EMAIL SENDING FAILED! Reason:", error.message);
-    console.log("======================================");
-    console.log("🔥 DEV MODE: Your OTP is:", otp);
-    console.log("======================================");
-    // Suppressing error so the frontend API request succeeds!
-  }
-};
 
 
-// ─── SEND SIGNUP OTP ─────────────────────────────────────────
-export const sendSignupOTP = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ message: "Email is required." });
-    }
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(409).json({ message: "An account with this email already exists." });
-    }
-
-    // Delete any existing OTP for this email
-    await OTP.deleteMany({ email: email.toLowerCase() });
-
-    const otp = generateOTP();
-
-    await OTP.create({
-      email: email.toLowerCase(),
-      otp: otp,
-    });
-
-
-
-    res.status(200).json({ message: "OTP sent successfully to your email." });
-  } catch (error) {
-    console.error("Send signup OTP error:", error);
-    res.status(500).json({ message: "Server error. Please try again later." });
-  }
-};
 
 // ─── REGISTER ────────────────────────────────────────────────
 export const registerUser = async (req, res) => {
@@ -258,15 +192,17 @@ export const forgotPassword = async (req, res) => {
       return res.json({ message: "If that email is registered, we have sent an OTP." });
     }
 
-    const otp = generateOTP();
+    const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit OTP
     // Valid for 10 minutes
     user.resetPasswordOTP = otp;
     user.resetPasswordOTPExpires = Date.now() + 10 * 60 * 1000;
 
     await user.save();
-    await sendOTPEmail(user.email, otp);
+    console.log("======================================");
+    console.log(`🔥 DEV MODE: Password Reset OTP for ${user.email} is:`, otp);
+    console.log("======================================");
 
-    res.json({ message: "If that email is registered, we have sent an OTP." });
+    res.json({ message: "If that email is registered, we have generated an OTP (check console)." });
   } catch (error) {
     console.error("Forgot password error:", error);
     res.status(500).json({ message: "Server error. Please try again later." });
