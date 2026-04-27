@@ -1,74 +1,8 @@
 import User from "../models/User.js";
-import OTP from "../models/OTP.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import nodemailer from "nodemailer";
-import { getTransporter } from "../config/nodemailer.js";
-
-const generateOTP = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit OTP
-};
-
-const sendOTPEmail = async (email, otp) => {
-  try {
-    const transporter = await getTransporter();
-
-    const info = await transporter.sendMail({
-      from: '"ChemBridge Support" <support@chembridge.app>',
-      to: email,
-      subject: "Password Reset OTP",
-      text: `Your OTP for resetting your password is: ${otp}. It is valid for 10 minutes.`,
-      html: `<p>You requested a password reset. Here is your One-Time Password:</p>
-             <h2 style="color: #4F46E5; letter-spacing: 2px;">${otp}</h2>
-             <p>It is valid for 10 minutes.</p>`,
-    });
-
-    if (!process.env.SMTP_HOST) {
-      console.log("Mock Email sent! Preview URL: %s", nodemailer.getTestMessageUrl(info));
-    }
-  } catch (error) {
-    console.error("EMAIL SENDING FAILED! Reason:", error.message);
-    console.log("======================================");
-    console.log("🔥 DEV MODE: Your OTP is:", otp);
-    console.log("======================================");
-    // Suppressing error so the frontend API request succeeds!
-  }
-};
 
 
-// ─── SEND SIGNUP OTP ─────────────────────────────────────────
-export const sendSignupOTP = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ message: "Email is required." });
-    }
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(409).json({ message: "An account with this email already exists." });
-    }
-
-    // Delete any existing OTP for this email
-    await OTP.deleteMany({ email: email.toLowerCase() });
-
-    const otp = generateOTP();
-
-    await OTP.create({
-      email: email.toLowerCase(),
-      otp: otp,
-    });
-
-
-
-    res.status(200).json({ message: "OTP sent successfully to your email." });
-  } catch (error) {
-    console.error("Send signup OTP error:", error);
-    res.status(500).json({ message: "Server error. Please try again later." });
-  }
-};
 
 // ─── REGISTER ────────────────────────────────────────────────
 export const registerUser = async (req, res) => {
@@ -208,6 +142,13 @@ export const loginUser = async (req, res) => {
       });
     }
 
+    // Check if account is blocked
+    if (user.isBlocked) {
+      return res.status(403).json({
+        message: "Your account has been temporarily blocked. Please contact the administrator.",
+      });
+    }
+
     // Generate token
     const token = jwt.sign(
       { id: user._id, role: user.role, batch: user.batch },
@@ -251,15 +192,17 @@ export const forgotPassword = async (req, res) => {
       return res.json({ message: "If that email is registered, we have sent an OTP." });
     }
 
-    const otp = generateOTP();
+    const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit OTP
     // Valid for 10 minutes
     user.resetPasswordOTP = otp;
     user.resetPasswordOTPExpires = Date.now() + 10 * 60 * 1000;
 
     await user.save();
-    await sendOTPEmail(user.email, otp);
+    console.log("======================================");
+    console.log(`🔥 DEV MODE: Password Reset OTP for ${user.email} is:`, otp);
+    console.log("======================================");
 
-    res.json({ message: "If that email is registered, we have sent an OTP." });
+    res.json({ message: "If that email is registered, we have generated an OTP (check console)." });
   } catch (error) {
     console.error("Forgot password error:", error);
     res.status(500).json({ message: "Server error. Please try again later." });
@@ -368,11 +311,69 @@ export const updateUserProfile = async (req, res) => {
 export const getAllStudents = async (req, res) => {
   try {
     const students = await User.find({ role: "student" })
-      .select("name indexNumber batch email createdAt")
+      .select("name indexNumber batch email createdAt isBlocked blockedAt")
       .sort({ createdAt: -1 });
     res.json(students);
   } catch (error) {
     console.error("Get all students error:", error);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ─── DELETE STUDENT (ADMIN ONLY) ─────────────────────────────────
+export const deleteStudent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const student = await User.findById(id);
+    if (!student) {
+      return res.status(404).json({ message: "Student not found." });
+    }
+
+    if (student.role !== "student") {
+      return res.status(400).json({ message: "Can only delete student accounts." });
+    }
+
+    await User.findByIdAndDelete(id);
+
+    res.json({ message: "Student account deleted successfully." });
+  } catch (error) {
+    console.error("Delete student error:", error);
+    res.status(500).json({ message: "Server error. Please try again later." });
+  }
+};
+
+// ─── TOGGLE BLOCK STUDENT (ADMIN ONLY) ───────────────────────────
+export const toggleBlockStudent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const student = await User.findById(id);
+    if (!student) {
+      return res.status(404).json({ message: "Student not found." });
+    }
+
+    if (student.role !== "student") {
+      return res.status(400).json({ message: "Can only block student accounts." });
+    }
+
+    student.isBlocked = !student.isBlocked;
+    student.blockedAt = student.isBlocked ? new Date() : null;
+    await student.save();
+
+    res.json({
+      message: student.isBlocked
+        ? "Student account has been blocked."
+        : "Student account has been unblocked.",
+      student: {
+        id: student._id,
+        name: student.name,
+        isBlocked: student.isBlocked,
+        blockedAt: student.blockedAt,
+      },
+    });
+  } catch (error) {
+    console.error("Toggle block student error:", error);
+    res.status(500).json({ message: "Server error. Please try again later." });
   }
 };

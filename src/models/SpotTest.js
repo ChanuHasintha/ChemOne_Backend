@@ -20,6 +20,7 @@ const spotTestSchema = new mongoose.Schema({
     default: []
   },
   isPublished: { type: Boolean, default: false },
+  publishedAt: { type: Date, default: null },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 

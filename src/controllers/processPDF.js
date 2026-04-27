@@ -19,7 +19,7 @@ export const handleProcessPDF = async (req, res) => {
     const gcsFileName = `knowledge-base/${Date.now()}-${fileName}`;
 
     console.log(`Step 1: Uploading to GCS: ${gcsFileName}`);
-    
+
     // Create initial record
     knowledgeRecord = await KnowledgeBase.create({
       fileName: fileName,
@@ -39,7 +39,7 @@ export const handleProcessPDF = async (req, res) => {
     });
 
     const publicUrl = `https://storage.googleapis.com/${bucket.name}/${gcsFileName}`;
-    
+
     // Update record
     knowledgeRecord.gcsUrl = publicUrl;
     knowledgeRecord.status = "indexing";
@@ -70,7 +70,7 @@ export const handleProcessPDF = async (req, res) => {
         // 3. Embed and Upsert
         console.log(`Generating embeddings for ${chunks.length} chunks...`);
         const embeddings = await createBatchEmbeddings(chunks);
-        
+
         const upserts = [];
         for (let i = 0; i < chunks.length; i++) {
           upserts.push({
@@ -108,7 +108,7 @@ export const handleProcessPDF = async (req, res) => {
 
       } catch (error) {
         console.error("Background PDF Processing Error:", error);
-        
+
         try {
           knowledgeRecord.status = "error";
           knowledgeRecord.error = error.message;
@@ -121,7 +121,7 @@ export const handleProcessPDF = async (req, res) => {
 
   } catch (error) {
     console.error("PDF Upload Error:", error);
-    
+
     if (knowledgeRecord && knowledgeRecord.status !== "indexing") {
       knowledgeRecord.status = "error";
       knowledgeRecord.error = error.message;
