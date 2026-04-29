@@ -7,7 +7,7 @@ import User from '../models/User.js';
 // CREATE worksheet upload
 export const uploadWorksheet = async (req, res) => {
     try {
-        const { date, notes } = req.body;
+        const { date, notes, batch } = req.body;
 
         if (!req.file) {
             return res.status(400).json({ message: 'No file uploaded' });
@@ -36,6 +36,7 @@ export const uploadWorksheet = async (req, res) => {
             publicId: fileName, // GCS path — used for deletion
             date,
             notes,
+            batch,
         });
 
         await newWorksheet.save();
@@ -52,7 +53,17 @@ export const uploadWorksheet = async (req, res) => {
 // GET all worksheets
 export const getWorksheets = async (req, res) => {
     try {
-        const data = await Worksheet.find().sort({ createdAt: -1 });
+        let query = {};
+        if (req.user && req.user.role === 'student' && req.user.batch) {
+            query.$or = [
+                { batch: req.user.batch },
+                { batch: 'All' },
+                { batch: { $exists: false } },
+                { batch: null }
+            ];
+        }
+        
+        const data = await Worksheet.find(query).sort({ createdAt: -1 });
 
         // If the user is a student, fetch their submissions
         let studentSubmissions = [];
