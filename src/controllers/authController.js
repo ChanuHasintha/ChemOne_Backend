@@ -1,6 +1,7 @@
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { getTransporter } from "../config/nodemailer.js";
 
 
 
@@ -198,11 +199,42 @@ export const forgotPassword = async (req, res) => {
     user.resetPasswordOTPExpires = Date.now() + 10 * 60 * 1000;
 
     await user.save();
-    console.log("======================================");
-    console.log(`🔥 DEV MODE: Password Reset OTP for ${user.email} is:`, otp);
-    console.log("======================================");
 
-    res.json({ message: "If that email is registered, we have generated an OTP (check console)." });
+    // Send email with OTP
+    try {
+      const transporter = await getTransporter();
+      const mailOptions = {
+        from: `"ChemBridge" <${process.env.SMTP_USER}>`,
+        to: user.email,
+        subject: "Password Reset OTP - ChemBridge",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+            <h2 style="color: #333; text-align: center;">ChemBridge Password Reset</h2>
+            <p>Hello <strong>${user.name}</strong>,</p>
+            <p>You requested to reset your password. Use the OTP below to proceed. This OTP is valid for <strong>10 minutes</strong>.</p>
+            <div style="background-color: #f4f4f4; padding: 15px; border-radius: 5px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; color: #000; border: 1px dashed #ccc; margin: 20px 0;">
+              ${otp}
+            </div>
+            <p>If you did not request this, please ignore this email or contact support if you have concerns.</p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+            <p style="font-size: 12px; color: #888; text-align: center;">
+              This is an automated email. Please do not reply.
+            </p>
+          </div>
+        `,
+      };
+
+      await transporter.sendMail(mailOptions);
+      console.log(`✅ Reset OTP sent to: ${user.email}`);
+      
+      res.json({ message: "If that email is registered, we have sent an OTP." });
+    } catch (emailError) {
+      console.error("Failed to send reset email:", emailError);
+      // In case email fails, we still return success message but log locally
+      // so user doesn't get stuck, though they won't get the email.
+      // Better to return 200 to avoid leaking account existence.
+      res.json({ message: "If that email is registered, we have sent an OTP." });
+    }
   } catch (error) {
     console.error("Forgot password error:", error);
     res.status(500).json({ message: "Server error. Please try again later." });
