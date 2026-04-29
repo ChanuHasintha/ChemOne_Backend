@@ -1,48 +1,19 @@
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import nodemailer from "nodemailer";
 import { getTransporter } from "../config/nodemailer.js";
 
-const generateOTP = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit OTP
-};
 
-const sendOTPEmail = async (email, otp) => {
-  try {
-    const transporter = await getTransporter();
-
-    const info = await transporter.sendMail({
-      from: '"ChemOne Support" <support@chemone.app>',
-      to: email,
-      subject: "Password Reset OTP",
-      text: `Your OTP for resetting your password is: ${otp}. It is valid for 10 minutes.`,
-      html: `<p>You requested a password reset. Here is your One-Time Password:</p>
-             <h2 style="color: #4F46E5; letter-spacing: 2px;">${otp}</h2>
-             <p>It is valid for 10 minutes.</p>`,
-    });
-
-    if (!process.env.SMTP_HOST) {
-      console.log("Mock Email sent! Preview URL: %s", nodemailer.getTestMessageUrl(info));
-    }
-  } catch (error) {
-    console.error("EMAIL SENDING FAILED! Reason:", error.message);
-    console.log("======================================");
-    console.log("🔥 DEV MODE: Your OTP is:", otp);
-    console.log("======================================");
-    // Suppressing error so the frontend API request succeeds!
-  }
-};
 
 // ─── REGISTER ────────────────────────────────────────────────
 export const registerUser = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, batch } = req.body;
 
     // --- Input validation ---
     if (!name || !email || !password) {
       return res.status(400).json({
-        message: "All fields are required (name, email, password).",
+        message: "All fields are required.",
       });
     }
 
@@ -73,6 +44,13 @@ export const registerUser = async (req, res) => {
     const validRoles = ["student", "instructor"];
     const userRole = role && validRoles.includes(role) ? role : "student";
 
+    // Validate batch for students
+    if (userRole === "student" && (!batch || batch.trim() === "")) {
+      return res.status(400).json({
+        message: "Please select your batch.",
+      });
+    }
+
     // Check if user already exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
@@ -81,21 +59,31 @@ export const registerUser = async (req, res) => {
       });
     }
 
+
+
     // Hash password
     const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(password, salt);
 
     // Create user
-    const user = await User.create({
+    const userPayload = {
       name: trimmedName,
       email: email.toLowerCase(),
       password: hashedPassword,
       role: userRole,
-    });
+    };
+
+    if (userRole === "student" && batch) {
+      userPayload.batch = batch.trim();
+    }
+
+    const user = await User.create(userPayload);
+
+
 
     // Generate JWT token for auto-login
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: user._id, role: user.role, batch: user.batch },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -108,6 +96,9 @@ export const registerUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        batch: user.batch,
+        indexNumber: user.indexNumber,
+        createdAt: user.createdAt,
       },
     });
   } catch (error) {
@@ -152,9 +143,16 @@ export const loginUser = async (req, res) => {
       });
     }
 
+    // Check if account is blocked
+    if (user.isBlocked) {
+      return res.status(403).json({
+        message: "Your account has been temporarily blocked. Please contact the administrator.",
+      });
+    }
+
     // Generate token
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: user._id, role: user.role, batch: user.batch },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -167,6 +165,9 @@ export const loginUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        batch: user.batch,
+        indexNumber: user.indexNumber,
+        createdAt: user.createdAt,
       },
     });
   } catch (error) {
@@ -192,15 +193,48 @@ export const forgotPassword = async (req, res) => {
       return res.json({ message: "If that email is registered, we have sent an OTP." });
     }
 
-    const otp = generateOTP();
+    const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit OTP
     // Valid for 10 minutes
     user.resetPasswordOTP = otp;
     user.resetPasswordOTPExpires = Date.now() + 10 * 60 * 1000;
-    
-    await user.save();
-    await sendOTPEmail(user.email, otp);
 
-    res.json({ message: "If that email is registered, we have sent an OTP." });
+    await user.save();
+
+    // Send email with OTP
+    try {
+      const transporter = await getTransporter();
+      const mailOptions = {
+        from: `"ChemBridge" <${process.env.SMTP_USER}>`,
+        to: user.email,
+        subject: "Password Reset OTP - ChemBridge",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+            <h2 style="color: #333; text-align: center;">ChemBridge Password Reset</h2>
+            <p>Hello <strong>${user.name}</strong>,</p>
+            <p>You requested to reset your password. Use the OTP below to proceed. This OTP is valid for <strong>10 minutes</strong>.</p>
+            <div style="background-color: #f4f4f4; padding: 15px; border-radius: 5px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; color: #000; border: 1px dashed #ccc; margin: 20px 0;">
+              ${otp}
+            </div>
+            <p>If you did not request this, please ignore this email or contact support if you have concerns.</p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+            <p style="font-size: 12px; color: #888; text-align: center;">
+              This is an automated email. Please do not reply.
+            </p>
+          </div>
+        `,
+      };
+
+      await transporter.sendMail(mailOptions);
+      console.log(`✅ Reset OTP sent to: ${user.email}`);
+      
+      res.json({ message: "If that email is registered, we have sent an OTP." });
+    } catch (emailError) {
+      console.error("Failed to send reset email:", emailError);
+      // In case email fails, we still return success message but log locally
+      // so user doesn't get stuck, though they won't get the email.
+      // Better to return 200 to avoid leaking account existence.
+      res.json({ message: "If that email is registered, we have sent an OTP." });
+    }
   } catch (error) {
     console.error("Forgot password error:", error);
     res.status(500).json({ message: "Server error. Please try again later." });
@@ -224,12 +258,12 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ 
+    const user = await User.findOne({
       email: email.toLowerCase(),
       resetPasswordOTP: otp,
       resetPasswordOTPExpires: { $gt: Date.now() }
     });
-    
+
     if (!user) {
       return res.status(400).json({
         message: "Invalid or expired OTP.",
@@ -252,5 +286,126 @@ export const resetPassword = async (req, res) => {
     res.status(500).json({
       message: "Server error. Please try again later.",
     });
+  }
+};
+
+// ─── GET CURRENT USER PROFILE ───────────────────────────────
+export const getUserProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("-password");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error("Profile error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ─── UPDATE USER PROFILE ───────────────────────────────
+export const updateUserProfile = async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (name) user.name = name.trim();
+    if (email) user.email = email.toLowerCase().trim();
+
+    const updatedUser = await user.save();
+
+    res.json({
+      message: "Profile updated successfully",
+      user: {
+        id: updatedUser._id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        batch: updatedUser.batch,
+        indexNumber: updatedUser.indexNumber,
+        createdAt: updatedUser.createdAt,
+      },
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ message: "Email already in use" });
+    }
+    console.error("Update profile error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ─── GET ALL STUDENTS (ADMIN ONLY) ───────────────────────────────
+export const getAllStudents = async (req, res) => {
+  try {
+    const students = await User.find({ role: "student" })
+      .select("name indexNumber batch email createdAt isBlocked blockedAt")
+      .sort({ createdAt: -1 });
+    res.json(students);
+  } catch (error) {
+    console.error("Get all students error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ─── DELETE STUDENT (ADMIN ONLY) ─────────────────────────────────
+export const deleteStudent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const student = await User.findById(id);
+    if (!student) {
+      return res.status(404).json({ message: "Student not found." });
+    }
+
+    if (student.role !== "student") {
+      return res.status(400).json({ message: "Can only delete student accounts." });
+    }
+
+    await User.findByIdAndDelete(id);
+
+    res.json({ message: "Student account deleted successfully." });
+  } catch (error) {
+    console.error("Delete student error:", error);
+    res.status(500).json({ message: "Server error. Please try again later." });
+  }
+};
+
+// ─── TOGGLE BLOCK STUDENT (ADMIN ONLY) ───────────────────────────
+export const toggleBlockStudent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const student = await User.findById(id);
+    if (!student) {
+      return res.status(404).json({ message: "Student not found." });
+    }
+
+    if (student.role !== "student") {
+      return res.status(400).json({ message: "Can only block student accounts." });
+    }
+
+    student.isBlocked = !student.isBlocked;
+    student.blockedAt = student.isBlocked ? new Date() : null;
+    await student.save();
+
+    res.json({
+      message: student.isBlocked
+        ? "Student account has been blocked."
+        : "Student account has been unblocked.",
+      student: {
+        id: student._id,
+        name: student.name,
+        isBlocked: student.isBlocked,
+        blockedAt: student.blockedAt,
+      },
+    });
+  } catch (error) {
+    console.error("Toggle block student error:", error);
+    res.status(500).json({ message: "Server error. Please try again later." });
   }
 };
