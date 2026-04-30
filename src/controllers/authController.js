@@ -204,7 +204,7 @@ export const forgotPassword = async (req, res) => {
     try {
       const transporter = await getTransporter();
       const mailOptions = {
-        from: `"ChemBridge" <${process.env.SMTP_USER}>`,
+        from: `"ChemBridge" <${process.env.SENDGRID_FROM}>`,
         to: user.email,
         subject: "Password Reset OTP - ChemBridge",
         html: `

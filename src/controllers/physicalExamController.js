@@ -1,6 +1,5 @@
 import PhysicalExam from '../models/PhysicalExam.js';
 import PhysicalResult from '../models/PhysicalResult.js';
-import nodemailer from 'nodemailer';
 import { getTransporter } from '../config/nodemailer.js';
 
 // Create a new physical exam record
@@ -187,7 +186,7 @@ export const notifyExamResults = async (req, res) => {
     for (const result of filteredResults) {
       if (result.student && result.student.email) {
         const mailOptions = {
-          from: `"ChemBridge" <${process.env.SMTP_USER || 'support@chembridge.app'}>`,
+          from: `"ChemBridge" <${process.env.SENDGRID_FROM || 'support@chembridge.app'}>`,
           to: result.student.email,
           subject: `Exam Results Out: ChemBridge`,
           text: `Hello ${result.student.name},\n\nYour results for "${exam.title}" are out now.\n\nYou can log in to the website and view your detailed rank.\n\nBest regards,\nChemBridge Team`

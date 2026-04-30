@@ -1,30 +1,42 @@
-import nodemailer from "nodemailer";
+import sgMail from "@sendgrid/mail";
 
 export const getTransporter = async () => {
-  if (process.env.SMTP_HOST) {
-    return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || "587"),
-      secure: process.env.SMTP_PORT == "465", // true for 465, false for other ports
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-      tls: {
-        rejectUnauthorized: false // Helps with some SMTP servers
-      }
-    });
-  } else {
-    // Fallback to Ethereal mock email for testing if no environment variables are set
-    const testAccount = await nodemailer.createTestAccount();
-    return nodemailer.createTransport({
-      host: "smtp.ethereal.email",
-      port: 587,
-      secure: false,
-      auth: {
-        user: testAccount.user,
-        pass: testAccount.pass,
-      },
-    });
+  const apiKey = (process.env.SENDGRID_API_KEY || "").trim();
+  const fromEmail = (process.env.SENDGRID_FROM || "").trim();
+  
+  if (!apiKey || apiKey.includes("your_api_key")) {
+    console.warn("⚠️ SENDGRID_API_KEY is missing!");
   }
+
+  sgMail.setApiKey(apiKey);
+
+  return {
+    sendMail: async (mailOptions) => {
+      const { to, subject, html, text } = mailOptions;
+
+      const msg = {
+        to: to,
+        from: {
+          email: fromEmail || 'chemashan2001@gmail.com',
+          name: "ChemBridge"
+        },
+        subject: subject,
+        text: text || (html ? html.replace(/<[^>]*>/g, '') : "OTP Code"),
+        html: html,
+      };
+
+      try {
+        await sgMail.send(msg);
+        console.log(`✅ Email sent successfully to: ${to}`);
+      } catch (error) {
+        console.error("❌ SENDGRID ERROR:");
+        if (error.response && error.response.body) {
+          console.error(JSON.stringify(error.response.body, null, 2));
+        } else {
+          console.error(error.message);
+        }
+        throw error;
+      }
+    },
+  };
 };
