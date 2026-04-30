@@ -1,6 +1,5 @@
 import PhysicalExam from '../models/PhysicalExam.js';
 import PhysicalResult from '../models/PhysicalResult.js';
-import nodemailer from 'nodemailer';
 import { getTransporter } from '../config/nodemailer.js';
 
 // Create a new physical exam record

@@ -1,30 +1,40 @@
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
+/**
+ * Returns an object that mimics the nodemailer transporter's sendMail method
+ * but uses Resend internally. This minimizes changes needed in controllers.
+ */
 export const getTransporter = async () => {
-  if (process.env.SMTP_HOST) {
-    return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || "587"),
-      secure: process.env.SMTP_PORT == "465", // true for 465, false for other ports
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-      tls: {
-        rejectUnauthorized: false // Helps with some SMTP servers
-      }
-    });
-  } else {
-    // Fallback to Ethereal mock email for testing if no environment variables are set
-    const testAccount = await nodemailer.createTestAccount();
-    return nodemailer.createTransport({
-      host: "smtp.ethereal.email",
-      port: 587,
-      secure: false,
-      auth: {
-        user: testAccount.user,
-        pass: testAccount.pass,
-      },
-    });
+  const apiKey = process.env.RESEND_API_KEY;
+  
+  if (!apiKey || apiKey === "re_your_api_key_here") {
+    console.warn("⚠️ RESEND_API_KEY is not set or using placeholder. Emails will not be sent.");
   }
+
+  const resend = new Resend(apiKey);
+
+  return {
+    sendMail: async (mailOptions) => {
+      const { from, to, subject, html, text } = mailOptions;
+      
+      // Resend requires a verified domain in production. 
+      // For development, you can use 'onboarding@resend.dev' but can only send to your own email.
+      const fromEmail = process.env.RESEND_FROM || from || 'onboarding@resend.dev';
+
+      const { data, error } = await resend.emails.send({
+        from: fromEmail,
+        to: Array.isArray(to) ? to : [to],
+        subject: subject,
+        html: html || text,
+        text: text || "",
+      });
+
+      if (error) {
+        console.error("❌ Resend Error:", error);
+        throw error;
+      }
+
+      return data;
+    },
+  };
 };
