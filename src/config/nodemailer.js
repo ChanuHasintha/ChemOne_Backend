@@ -1,40 +1,42 @@
-import { Resend } from "resend";
+import sgMail from "@sendgrid/mail";
 
-/**
- * Returns an object that mimics the nodemailer transporter's sendMail method
- * but uses Resend internally. This minimizes changes needed in controllers.
- */
 export const getTransporter = async () => {
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = (process.env.SENDGRID_API_KEY || "").trim();
+  const fromEmail = (process.env.SENDGRID_FROM || "").trim();
   
-  if (!apiKey || apiKey === "re_your_api_key_here") {
-    console.warn("⚠️ RESEND_API_KEY is not set or using placeholder. Emails will not be sent.");
+  if (!apiKey || apiKey.includes("your_api_key")) {
+    console.warn("⚠️ SENDGRID_API_KEY is missing!");
   }
 
-  const resend = new Resend(apiKey);
+  sgMail.setApiKey(apiKey);
 
   return {
     sendMail: async (mailOptions) => {
-      const { from, to, subject, html, text } = mailOptions;
-      
-      // Resend requires a verified domain in production. 
-      // For development, you can use 'onboarding@resend.dev' but can only send to your own email.
-      const fromEmail = process.env.RESEND_FROM || from || 'onboarding@resend.dev';
+      const { to, subject, html, text } = mailOptions;
 
-      const { data, error } = await resend.emails.send({
-        from: fromEmail,
-        to: Array.isArray(to) ? to : [to],
+      const msg = {
+        to: to,
+        from: {
+          email: fromEmail || 'chemashan2001@gmail.com',
+          name: "ChemBridge"
+        },
         subject: subject,
-        html: html || text,
-        text: text || "",
-      });
+        text: text || (html ? html.replace(/<[^>]*>/g, '') : "OTP Code"),
+        html: html,
+      };
 
-      if (error) {
-        console.error("❌ Resend Error:", error);
+      try {
+        await sgMail.send(msg);
+        console.log(`✅ Email sent successfully to: ${to}`);
+      } catch (error) {
+        console.error("❌ SENDGRID ERROR:");
+        if (error.response && error.response.body) {
+          console.error(JSON.stringify(error.response.body, null, 2));
+        } else {
+          console.error(error.message);
+        }
         throw error;
       }
-
-      return data;
     },
   };
 };
