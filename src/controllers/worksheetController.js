@@ -158,6 +158,10 @@ export const viewWorksheetWithWatermark = async (req, res) => {
         const student = await User.findById(req.user.id);
         const watermarkText = student.indexNumber || student.name || 'STUDENT';
 
+        if (!worksheet.publicId) {
+            return res.status(400).json({ message: 'Worksheet file path missing' });
+        }
+
         // Fetch PDF from GCS
         const [pdfBuffer] = await bucket.file(worksheet.publicId).download();
 
@@ -193,6 +197,10 @@ export const viewWorksheetWithWatermark = async (req, res) => {
         });
 
         const modifiedPdf = await pdfDoc.save();
+        
+        // CORS and Security Headers for PDF Viewing
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
         res.contentType('application/pdf');
         // Set disposition so browser knows it's an inline viewable but downloadable file
         res.setHeader('Content-Disposition', `inline; filename="${worksheet.fileName}"`);
