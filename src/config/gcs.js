@@ -9,7 +9,8 @@ const __dirname = path.dirname(__filename); // This is g:\ChemOne\backend\src\co
 const keyFilePath = path.join(__dirname, '../../serviceAccountKey.json');
 
 const storage = new Storage({
-  keyFilename: keyFilePath,
+  credentials: process.env.GCS_CREDENTIALS ? JSON.parse(process.env.GCS_CREDENTIALS) : undefined,
+  keyFilename: process.env.GCS_CREDENTIALS ? undefined : keyFilePath,
   projectId: process.env.GCS_PROJECT_ID,
 });
 
