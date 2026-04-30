@@ -12,7 +12,8 @@ export const getTransporter = async () => {
       },
       tls: {
         rejectUnauthorized: false // Helps with some SMTP servers
-      }
+      },
+      family: 4 // Force IPv4 to avoid ENETUNREACH errors on platforms like Render
     });
   } else {
     // Fallback to Ethereal mock email for testing if no environment variables are set
