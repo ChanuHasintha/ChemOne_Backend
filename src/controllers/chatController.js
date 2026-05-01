@@ -49,10 +49,10 @@ const generateWithFallback = async (prompt, retryCount = 0) => {
     }
   }
 
-  // If all models were rate limited and we haven't retried yet, wait and retry
-  if (allRateLimited && retryCount < 2) {
-    const waitTime = (retryCount + 1) * 15000; // 15s, then 30s
-    console.log(`All models rate limited. Waiting ${waitTime / 1000}s before retry #${retryCount + 1}...`);
+  // If all models were rate limited and we haven't retried yet, try ONE more time quickly
+  if (allRateLimited && retryCount < 1) {
+    const waitTime = 2000; // wait 2s instead of 15s to avoid freezing the UI
+    console.log(`All models rate limited. Waiting ${waitTime / 1000}s before quick retry...`);
     await new Promise((r) => setTimeout(r, waitTime));
     return generateWithFallback(prompt, retryCount + 1);
   }
