@@ -14,6 +14,7 @@ import gameRoutes from "./routes/gameRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 
 const app = express();
+app.set('trust proxy', true);
 
 // Fix __dirname (ESM)
 const __filename = fileURLToPath(import.meta.url);

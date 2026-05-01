@@ -4,6 +4,31 @@ import bucket from '../config/gcs.js';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import User from '../models/User.js';
 
+// Helper to get base URL dynamically
+const getBaseUrl = (req) => {
+    if (process.env.BACKEND_URL) return process.env.BACKEND_URL;
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.get('host');
+    return `${protocol}://${host}`;
+};
+
+// Helper to get signed URL for GCS
+const getSignedFileUrl = async (publicId) => {
+    if (!publicId) return null;
+    try {
+        const options = {
+            version: 'v4',
+            action: 'read',
+            expires: Date.now() + 12 * 60 * 60 * 1000, // 12 hours
+        };
+        const [url] = await bucket.file(publicId).getSignedUrl(options);
+        return url;
+    } catch (err) {
+        console.error('Failed generating signed URL for:', publicId, err);
+        return null;
+    }
+};
+
 // CREATE worksheet upload
 export const uploadWorksheet = async (req, res) => {
     try {
@@ -43,7 +68,10 @@ export const uploadWorksheet = async (req, res) => {
 
         res.status(201).json({
             message: 'Worksheet uploaded successfully',
-            data: newWorksheet,
+            data: {
+                ...newWorksheet.toObject(),
+                fileUrl: await getSignedFileUrl(fileName)
+            },
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -74,41 +102,18 @@ export const getWorksheets = async (req, res) => {
         // Generate signed URLs so files in private buckets can be opened/downloaded
         const tokenForLinks = req.headers.authorization?.split(' ')[1] || req.query.token || '';
 
+        const baseUrl = getBaseUrl(req);
         const mappedData = await Promise.all(data.map(async (ws) => {
-            let signedFileUrl = ws.fileUrl; // Fallback to original URL
-            if (ws.publicId) {
-                try {
-                    const options = {
-                        version: 'v4',
-                        action: 'read',
-                        expires: Date.now() + 12 * 60 * 60 * 1000, // 12 hours
-                    };
-                    const [url] = await bucket.file(ws.publicId).getSignedUrl(options);
-                    signedFileUrl = url;
-                } catch (err) {
-                    console.error('Failed generating signed URL for:', ws.publicId, err);
-                }
-            }
+            let signedFileUrl = await getSignedFileUrl(ws.publicId) || ws.fileUrl;
 
             // Map student submission status
             let mySubmission = null;
             if (req.user && req.user.role === 'student') {
                 const sub = studentSubmissions.find(s => s.worksheet.toString() === ws._id.toString());
                 if (sub) {
-                    let signedSubmissionUrl = sub.fileUrl;
-                    if (sub.publicId) {
-                        try {
-                            const [url] = await bucket.file(sub.publicId).getSignedUrl({
-                                version: 'v4', action: 'read', expires: Date.now() + 12 * 60 * 60 * 1000
-                            });
-                            signedSubmissionUrl = url;
-                        } catch (err) {
-                            console.error('Failed signed URL for submission:', sub.publicId);
-                        }
-                    }
                     mySubmission = {
                         ...sub.toObject(),
-                        fileUrl: signedSubmissionUrl
+                        fileUrl: await getSignedFileUrl(sub.publicId) || sub.fileUrl
                     };
                 }
             }
@@ -118,24 +123,13 @@ export const getWorksheets = async (req, res) => {
             // OR if student AND they have a confirmed submission
             const isConfirmed = mySubmission && mySubmission.isConfirmed;
             if (req.user.role === 'instructor' || isConfirmed) {
-                if (ws.officialAnswerPublicId) {
-                    try {
-                        const [url] = await bucket.file(ws.officialAnswerPublicId).getSignedUrl({
-                            version: 'v4', action: 'read', expires: Date.now() + 12 * 60 * 60 * 1000
-                        });
-                        signedOfficialAnswerUrl = url;
-                    } catch (err) {
-                        console.error('Failed signed URL for official answer:', ws.officialAnswerPublicId);
-                    }
-                } else {
-                    signedOfficialAnswerUrl = ws.officialAnswerUrl;
-                }
+                signedOfficialAnswerUrl = await getSignedFileUrl(ws.officialAnswerPublicId) || ws.officialAnswerUrl;
             }
 
             return {
                 ...ws.toObject(),
                 fileUrl: (req.user.role === 'student' && ws.publicId) 
-                    ? `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/worksheets/${ws._id}/view?token=${tokenForLinks}` 
+                    ? `${baseUrl}/api/worksheets/${ws._id}/view?token=${tokenForLinks}` 
                     : signedFileUrl,
                 officialAnswerUrl: signedOfficialAnswerUrl,
                 mySubmission
@@ -290,7 +284,7 @@ export const submitWorksheetAnswer = async (req, res) => {
             message: 'Answer submitted successfully',
             data: {
                 ...newSubmission.toObject(),
-                fileUrl: signedSubmissionUrl
+                fileUrl: await getSignedFileUrl(fileName) || fileUrl
             },
         });
     } catch (error) {
@@ -307,23 +301,9 @@ export const getWorksheetSubmissions = async (req, res) => {
             .sort({ createdAt: -1 });
 
         const mappedData = await Promise.all(submissions.map(async (sub) => {
-            let signedFileUrl = sub.fileUrl;
-            if (sub.publicId) {
-                try {
-                    const options = {
-                        version: 'v4',
-                        action: 'read',
-                        expires: Date.now() + 12 * 60 * 60 * 1000,
-                    };
-                    const [url] = await bucket.file(sub.publicId).getSignedUrl(options);
-                    signedFileUrl = url;
-                } catch (err) {
-                    console.error('Failed generating signed URL for submission:', sub.publicId, err);
-                }
-            }
             return {
                 ...sub.toObject(),
-                fileUrl: signedFileUrl
+                fileUrl: await getSignedFileUrl(sub.publicId) || sub.fileUrl
             };
         }));
 
@@ -420,7 +400,10 @@ export const uploadOfficialAnswer = async (req, res) => {
         res.status(200).json({
             success: true,
             message: 'Official answer uploaded successfully',
-            data: worksheet
+            data: {
+                ...worksheet.toObject(),
+                officialAnswerUrl: await getSignedFileUrl(fileName) || fileUrl
+            }
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
