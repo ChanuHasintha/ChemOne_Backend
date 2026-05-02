@@ -38,6 +38,15 @@ app.use("/api/chat", chatRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/games", gameRoutes);
 
+// Keep-alive endpoints (for UptimeRobot / monitoring)
+app.get("/ping", (req, res) => {
+  res.status(200).send("Server is alive");
+});
+
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", uptime: process.uptime() });
+});
+
 app.get("/", (req, res) => {
   res.send("LMS API Running...");
 });
