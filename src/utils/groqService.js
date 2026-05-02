@@ -8,8 +8,8 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // Groq models in priority order
 const GROQ_MODEL_CHAIN = [
-  "llama-3.1-8b-instant",   // Primary - fast, good quality
-  "llama3-8b-8192",         // Fallback - slightly older but reliable
+  "llama-3.1-8b-instant",       // Fast and reliable
+  "llama-3.3-70b-versatile",    // More capable fallback
 ];
 
 /**
