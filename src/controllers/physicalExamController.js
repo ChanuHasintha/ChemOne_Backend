@@ -159,21 +159,35 @@ export const getMyPhysicalResults = async (req, res) => {
 export const notifyExamResults = async (req, res) => {
   try {
     const { id } = req.params;
-    const { batch } = req.body; // New: optional batch filter
 
     const exam = await PhysicalExam.findById(id);
     if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
 
     // Build the query for results
     const query = { exam: id };
+    const { batch, studentId } = req.body;
 
-    // We'll populate student and then filter if batch is specified
+    console.log(`[Notification Request] Exam: ${id}, Batch: ${batch}, Student: ${studentId}`);
+
+    if (studentId) {
+      query.student = studentId;
+    }
+
     const results = await PhysicalResult.find(query).populate('student', 'name email batch');
 
     let filteredResults = results;
-    if (batch && batch !== "All Batches") {
+    
+    // If a specific student was requested, ensure we only have that student
+    if (studentId) {
+      filteredResults = results.filter(r => r.student && r.student._id.toString() === studentId.toString());
+    } else if (batch && batch !== "All Batches") {
       filteredResults = results.filter(r => r.student && r.student.batch === batch);
+    } else if (!batch) {
+        // Safety: If neither studentId nor batch is provided, don't default to "everyone"
+        return res.status(400).json({ success: false, message: "Please specify a student or batch to notify." });
     }
+
+    console.log(`[Notification] Found ${filteredResults.length} relevant results to notify.`);
 
     if (!filteredResults.length) {
       return res.status(400).json({ success: false, message: "No results found for the selected criteria to notify." });
