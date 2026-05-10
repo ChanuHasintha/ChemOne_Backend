@@ -14,6 +14,9 @@ import gameRoutes from "./routes/gameRoutes.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -21,9 +24,39 @@ connectDB();
 
 const app = express();
 
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+// Security Middlewares
+app.use(helmet()); // Set security HTTP headers
+
+// Rate Limiting
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: "Too many requests from this IP, please try again after 15 minutes",
+});
+app.use("/api", apiLimiter);
+
+// Stricter limiter for auth routes
+const authLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // Limit each IP to 10 requests per windowMs (login/register)
+  message: "Too many authentication attempts, please try again after an hour",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/register", authLimiter);
+app.use("/api/auth/forgot-password", authLimiter);
+app.use("/api/auth/reset-password", authLimiter);
+
+// CORS configuration (Restrict in production)
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || "*",
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
+
+app.use(express.json({ limit: '10mb' })); // Reduced limit for security
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Serve static files (Uploaded Images)
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));

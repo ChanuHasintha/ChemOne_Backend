@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import bucket from '../config/gcs.js';
+import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -17,8 +18,8 @@ const upload = multer({
   },
 });
 
-// Upload single image to Google Cloud Storage
-router.post('/', upload.single('image'), async (req, res) => {
+// Upload single image to Google Cloud Storage (Protected)
+router.post('/', protect, upload.single('image'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'No file uploaded' });
   }
