@@ -16,7 +16,7 @@ import { fileURLToPath } from "url";
 import rateLimit from "express-rate-limit";
 
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
