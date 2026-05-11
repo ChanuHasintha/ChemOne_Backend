@@ -13,6 +13,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import gameRoutes from "./routes/gameRoutes.js";
 import path from "path";
 import { fileURLToPath } from "url";
+import rateLimit from "express-rate-limit";
 
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -26,6 +27,8 @@ const app = express();
 
 // Security Middlewares
 app.use(helmet()); // Set security HTTP headers
+
+app.set("trust proxy", 1);
 
 // Rate Limiting
 const apiLimiter = rateLimit({
