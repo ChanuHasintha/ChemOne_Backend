@@ -8,7 +8,7 @@ const gameScoreSchema = new mongoose.Schema({
   },
   game: {
     type: String,
-    enum: ["memory", "puzzle", "wordsearch"],
+    enum: ["chembattle"],
     required: true,
   },
   score: {
