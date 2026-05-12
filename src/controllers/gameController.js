@@ -34,13 +34,16 @@ export const submitScore = async (req, res) => {
     });
 
     if (existing) {
-      if (Number(score) < existing.score) {
-        console.log(`Updating high score: ${existing.score} -> ${score}`);
+      const isHigherBetter = ["chembattle", "labgame"].includes(game);
+      const shouldUpdate = isHigherBetter ? Number(score) > existing.score : Number(score) < existing.score;
+
+      if (shouldUpdate) {
+        console.log(`Updating ${isHigherBetter ? "high" : "best"} score: ${existing.score} -> ${score}`);
         existing.score = Number(score);
         await existing.save();
         return res.status(200).json({ message: "This month's high score updated!", data: existing });
       } else {
-        console.log(`Score not better: ${score} >= ${existing.score}`);
+        console.log(`Score not better: ${score} vs ${existing.score}`);
         return res.status(200).json({ message: "Score submitted. Your existing monthly score is still better.", data: existing });
       }
     }
@@ -70,7 +73,7 @@ export const getLeaderboard = async (req, res) => {
         game,
         createdAt: { $gte: start, $lt: end }
       })
-      .sort({ score: 1 }) // Ascending order
+      .sort({ score: ["chembattle", "labgame"].includes(game) ? -1 : 1 }) // Higher is better for chembattle and labgame, else lower
       .limit(10)
       .populate("student", "name indexNumber batch profileImage");
 
